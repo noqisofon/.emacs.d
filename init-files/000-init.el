@@ -1,6 +1,6 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
-;;; init.el --- 
+;;; 000-init.el --- 
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -26,20 +26,8 @@
 
 ;;; Code:
 
-(unless (boundp 'user-emacs-directory)
-  (defvar user-emacs-directory (expand-file-name "~/.emacs.d/")))
+(load "000-display")
+;;(load "000-font")
+(load "000-text-editor")
 
-(defun add-to-load-path (&rest paths)
-  (let (path)
-    (dolist (path paths paths)
-      (let ((default-directory (expand-file-name (concat user-emacs-directory path))))
-        (add-to-list 'load-path default-directory)
-        (when (fboundp 'normal-top-level-add-subdirs-to-load-path)
-          (normal-top-level-add-subdirs-to-load-path))))))
-
-(add-to-load-path "init-files" "modules-avalaible")
-
-(load "000-environment")
-(load "000-init")
-
-;;; init.el ends here
+;;; 000-init.el ends here
