@@ -1,0 +1,19 @@
+# -*- coding: utf-8; mode: gitignore; -*-
+#
+# .gitignore
+#
+
+# ============================================================
+# 
+# Emacs template files
+# 
+*~
+.*~
+\#*#
+
+# ============================================================
+# 
+# Ignore Directories
+# 
+auto-save-mode/
+tramp/
