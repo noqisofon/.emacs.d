@@ -18,9 +18,11 @@
 (setq scroll-conservatively 15)
 
 ;; 対応するカッコを色表示します。
-(when (show-paren-mode 1)
-  ;; 括弧の背景を灰色にします。
-  (set-face-background 'show-paren-match-face "gray85"))
+;;(when
+(show-paren-mode 1)  
+;;; theme で設定します。
+;; 括弧の背景を灰色にします。
+;;(set-face-background 'show-paren-match-face "gray85"))
 
 ;;; auto-fill モード
 (setq-default auto-fill-function 'do-auto-fill)
@@ -30,5 +32,5 @@
 ;; EOB を表示します。
 (setq-default indicate-empty-lines t)
 
+(load "002-color-theme")
 (load "002-linum")
-(load "003-color-theme")

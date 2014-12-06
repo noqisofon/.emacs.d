@@ -33,10 +33,8 @@
 ;; スクロールバーを右側に表示します。
 (set-scroll-bar-mode 'right)
 
-;;; つーるばー
-;; line number を表示します。
-(line-number-mode t)
 
-;; column numer を表示します。
-(column-number-mode t)
-
+(load "000-display")
+;;(load "000-font")
+(load "000-text-editor")
+(load "000-mode-line")

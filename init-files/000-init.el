@@ -26,11 +26,9 @@
 
 ;;; Code:
 
-
-(load "000-display")
-;;(load "000-font")
-(load "000-text-editor")
+(load "001-input-method")
 (load "001-key-bind")
-(load "010-input-method")
+(load "001-recent")
+(load "001-session")
 
 ;;; 000-init.el ends here
