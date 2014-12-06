@@ -2,6 +2,10 @@
 
 (load "000-platform")
 
+(load "xyzzy-like-title")
+(load "e-arrows-macro")
+(load "bookshelf")
+
 ;; カレントディレクトリの位置を $HOME に設定します。
 (cd "~/")
 
