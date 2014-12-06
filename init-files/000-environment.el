@@ -1,6 +1,7 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
 (load "000-platform")
+(load "000-locale")
 
 (load "xyzzy-like-title")
 (load "e-arrows-macro")
@@ -8,9 +9,6 @@
 
 ;; カレントディレクトリの位置を $HOME に設定します。
 (cd "~/")
-
-(let ((language "Japanese"))
-  (set-language-environment language))
 
 ;; 起動時のメッセージを表示しないようにします。
 (setq inhibit-startup-message t)
@@ -38,3 +36,5 @@
 ;;(load "000-font")
 (load "000-text-editor")
 (load "000-mode-line")
+(load "000-emacs-client")
+(load "000-autoinsert")

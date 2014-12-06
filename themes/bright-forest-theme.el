@@ -27,7 +27,7 @@
                                        "gray85"))))
 
  ;; ハイライト
- '(highlight ((t (:foreground "gray08" :background "white"))))
+ '(highlight ((t (:background "alice blue"))))
  '(highlight-change ((t (:foreground "red1"))))
  '(highlight-change-delete ((t (:foreground "red1" :underline t))))
  '(hl-line ((t :background "alice blue")))

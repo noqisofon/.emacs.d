@@ -1,10 +1,8 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
-
-;;; 000-init.el --- 
+;;; 010-sass.el ---                                  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2014  ned rihine
 
-;; Author: ned rihine <ned.rihine@gmail.com>
+;; Author:  <ned.rihine@gmail.com>
 ;; Keywords: 
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -25,13 +23,9 @@
 ;; 
 
 ;;; Code:
+(require-if-exists sass-mode)
+(require-if-exists scss-mode)
 
-(load "001-input-method")
-(load "001-key-bind")
-(load "001-recent")
-(load "001-session")
 
-(load "010-light-markup-langage")
-(load "020-version-control")
-
-;;; 000-init.el ends here
+(provide '010-sass)
+;;; 010-sass.el ends here
