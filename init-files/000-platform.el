@@ -39,7 +39,7 @@
 ;;; OS 判別
 ;;
 (defun system-type-p (system-symbol)
-      (equal system-type system-name))
+      (eq system-type system-symbol))
     
 (defvar linuxp       (system-type-p 'gnu/linux))
 (defvar darwinp      (system-type-p 'darwin))

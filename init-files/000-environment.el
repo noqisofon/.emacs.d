@@ -33,6 +33,7 @@
 ;; スクロールバーを右側に表示します。
 (set-scroll-bar-mode 'right)
 
+;;; つーるばー
 ;; line number を表示します。
 (line-number-mode t)
 
