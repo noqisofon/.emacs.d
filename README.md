@@ -11,6 +11,7 @@
                   init.el
                   module-available/
                   snippets/
+                  themes/
                   private/
 
 ### 主なポイント
@@ -20,4 +21,5 @@
 - `init.el` は `./init-files/000-init.el` を require するだけのファイルです。
 - `module-available/` は Emacs Lisp のパッケージを置いておくディレクトリです。
 - `snippets/` は yasnippet のスニペットを保存しておきます。
+- 'themes/' は Emacs のテーマを置いておきます。
 - `private/` は `profile.el` などの基本的に Git で管理しないファイルを置いておくディレクトリです。
