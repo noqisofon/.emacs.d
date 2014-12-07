@@ -37,7 +37,9 @@
         (when (fboundp 'normal-top-level-add-subdirs-to-load-path)
           (normal-top-level-add-subdirs-to-load-path))))))
 
-(add-to-load-path "init-files" "module-available")
+(add-to-load-path "init-availables" "module-availables" "private")
+
+(load "profile")
 
 (load "000-environment")
 (load "000-init")

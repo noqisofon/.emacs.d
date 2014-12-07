@@ -31,6 +31,16 @@
 ;; スクロールバーを右側に表示します。
 (set-scroll-bar-mode 'right)
 
+(defun after-byte-compile ()
+  (if (file-newer-than-file-p (concat user-emacs-directory "init.el") (concat user-emacs-directory "init.elc"))
+      (byte-compile-file (concat user-emacs-directory "init.el"))
+    (byte-recompile-directory (concat
+                               user-emacs-directory "module-availables") 0)
+    (byte-recompile-directory (concat user-emacs-directory "init-availables") 0)
+    (byte-recompile-directory (concat user-emacs-directory "private") 0)))
+
+;; 終了時にバイトコンパイルを行います。
+(add-hook 'kill-emacs-query-functions 'after-byte-compile)
 
 (load "000-display")
 ;;(load "000-font")
