@@ -1,6 +1,6 @@
-;;; -*- coding: utf-8; lexical-binding: t; -*-
+;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
 
-;;; 001-input-method.el ---
+;;; 040-lisp-common.el ---
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -25,12 +25,13 @@
 ;; 
 
 ;;; Code:
+;; Lisp の括弧内のインデントです。
+(setq lisp-body-indent 2)
 
-(cond (linuxp
-       (load "011-mozc"))
+(add-hook 'lisp-mode-hook (lambda ()
+                            (set (make-local-variable 'lisp-indent-function)
+                                 'common-lisp-indent-function)))
 
-      (windows-nt-p
-       (load "011-ime")))
 
-(provide '001-input-method)
-;;; 001-input-method.el ends here
+(provide '040-lisp-common)
+;;; 040-lisp-common.el ends here

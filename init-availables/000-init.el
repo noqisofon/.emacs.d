@@ -34,4 +34,6 @@
 (load "010-light-markup-langage")
 (load "020-version-control")
 
+(load "040--programing-language")
+
 ;;; 000-init.el ends here

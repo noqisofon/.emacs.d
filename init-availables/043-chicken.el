@@ -1,6 +1,6 @@
-;;; -*- coding: utf-8; lexical-binding: t; -*-
+;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
 
-;;; 001-input-method.el ---
+;;; 043-chicken.el ---
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -25,12 +25,9 @@
 ;; 
 
 ;;; Code:
+(require-if-exists chicken)
+(require-if-exists cluck)
 
-(cond (linuxp
-       (load "011-mozc"))
 
-      (windows-nt-p
-       (load "011-ime")))
-
-(provide '001-input-method)
-;;; 001-input-method.el ends here
+(provide '043-chicken)
+;;; 043-chicken.el ends here

@@ -1,6 +1,6 @@
-;;; -*- coding: utf-8; lexical-binding: t; -*-
+;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
 
-;;; 001-input-method.el ---
+;;; 040-d.el ---
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -25,12 +25,10 @@
 ;; 
 
 ;;; Code:
+(push '("\\.d$" . d-mode) auto-mode-alist)
 
-(cond (linuxp
-       (load "011-mozc"))
+(lazyload (d-mode) "d-mode")
 
-      (windows-nt-p
-       (load "011-ime")))
 
-(provide '001-input-method)
-;;; 001-input-method.el ends here
+(provide '040-d)
+;;; 040-d.el ends here

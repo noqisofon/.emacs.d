@@ -1,6 +1,4 @@
-;;; -*- coding: utf-8; lexical-binding: t; -*-
-
-;;; 001-input-method.el ---
+;;; 043-gauche.el ---                                -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -25,12 +23,12 @@
 ;; 
 
 ;;; Code:
+;; Scheme 用のコマンドを設定します。
+(setq scheme-program-name "gosh -i")
 
-(cond (linuxp
-       (load "011-mozc"))
+(setq process-coding-system-alist
+      (cons '("gosh" utf-8 . utf-8) process-coding-system-alist))
 
-      (windows-nt-p
-       (load "011-ime")))
 
-(provide '001-input-method)
-;;; 001-input-method.el ends here
+(provide '043-gauche)
+;;; 043-gauche.el ends here

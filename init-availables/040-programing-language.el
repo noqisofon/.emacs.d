@@ -1,6 +1,6 @@
-;;; -*- coding: utf-8; lexical-binding: t; -*-
+;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
 
-;;; 001-input-method.el ---
+;;; 040-programing-language.el ---
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -25,12 +25,14 @@
 ;; 
 
 ;;; Code:
+(load "040-c-common")
+(load "040-lisp-common")
 
-(cond (linuxp
-       (load "011-mozc"))
+(load "040-csharp")
+(load "040-d")
+(load "040-dart")
+(load "040-ruby")
+(load "040-vala")
 
-      (windows-nt-p
-       (load "011-ime")))
-
-(provide '001-input-method)
-;;; 001-input-method.el ends here
+(provide '040-programing-language)
+;;; 040-programing-language.el ends here

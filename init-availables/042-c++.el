@@ -1,6 +1,6 @@
-;;; -*- coding: utf-8; lexical-binding: t; -*-
+;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
 
-;;; 001-input-method.el ---
+;;; 042-c++.el ---
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -25,12 +25,10 @@
 ;; 
 
 ;;; Code:
+(add-hook-lambda 'c++-mode-hook
+                 ;; 標準オフセットを tab-width と同じにします。
+                 (setq c++-basic-offset tab-width))
 
-(cond (linuxp
-       (load "011-mozc"))
 
-      (windows-nt-p
-       (load "011-ime")))
-
-(provide '001-input-method)
-;;; 001-input-method.el ends here
+(provide '042-c++)
+;;; 042-c++.el ends here
