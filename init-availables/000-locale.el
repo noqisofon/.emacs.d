@@ -12,8 +12,10 @@
       (when (fboundp 'set-w32-system-coding-system)
         (set-w32-system-coding-system system-coding))
       ;; デフォルトの文字コードです。
-      (when (fboundp 'set-default-coding-system)
-        (set-default-coding-system default-coding))
+      (when (fboundp 'set-default-coding-systems)
+        (set-default-coding-systems default-coding))
+      ;; デフォルトのファイルバッファの文字コードを設定します。
+      (setq default-buffer-file-coding-system default-coding)
       ;; 端末の文字コードです。
       (set-terminal-coding-system default-coding)
       ;; Windows NT の内部文字コードは UTF-16LE なので、クリップボードのエンコードを utf-16le-dos にしておきます。
@@ -25,14 +27,16 @@
   ;; else
   (let ((default-coding 'utf-8-unix))
     ;; デフォルトの文字コードです。
-    (when (fboundp 'set-default-coding-system)
-      (set-default-coding-system default-coding))
+    (when (fboundp 'set-default-coding-systems)
+      (set-default-coding-systems default-coding))
+    ;; デフォルトのファイルバッファの文字コードを設定します。
+    (setq default-buffer-file-coding-system default-coding)
     ;; 端末の文字コードです。
     (set-terminal-coding-system default-coding)
     ;; クリップボードのエンコードです。
     (when (fboundp 'set-clipboard-codng-system)
       (set-clipboard-codng-system default-coding))
-      ;; 新規作成するバッファのエンコードです。
+    ;; 新規作成するバッファのエンコードです。
     (when (fboundp 'prefer-coding-system-coding)
       (prefer-coding-system-coding default-coding))))
 ;;; 000-locale.el ends here

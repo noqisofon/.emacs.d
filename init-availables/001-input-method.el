@@ -1,4 +1,6 @@
-;;; 001-input-method.el ---                          -*- lexical-binding: t; -*-
+;;; -*- coding: utf-8; lexical-binding: t; -*-
+
+;;; 001-input-method.el ---
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -26,6 +28,9 @@
 
 (when linuxp
   (load "011-mozc"))
+
+(when windows-nt-p
+  (load "011-ime"))
 
 (provide '001-input-method)
 ;;; 001-input-method.el ends here

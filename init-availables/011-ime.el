@@ -1,8 +1,10 @@
-;;; macros.el ---                                    -*- lexical-binding: t; -*-
+;;; -*- coding: utf-8; lexical-binding: t; -*-
 
-;; Copyright (C) 2014  
+;;; 011-ime.el ---
 
-;; Author:  <rihine@leviatan.localdomain>
+;; Copyright (C) 2014  ned rihine
+
+;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -23,10 +25,13 @@
 ;; 
 
 ;;; Code:
-(defmacro fbound-when (fn &rest body)
-  `(when (fboundp ',fn)
-     ,@body))
+(when windows-nt-p
+  ;; デフォルトインプットメソッドを W32-IME にします。
+  (setq default-input-method "W32-IME")
 
+  ;; IME の初期化
+  (when (fboundp 'w32-ime-initialize)
+    (w32-ime-initialize)))
 
-(provide 'macros)
-;;; macros.el ends here
+(provide '011-ime)
+;;; 011-ime.el ends here
