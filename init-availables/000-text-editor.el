@@ -22,12 +22,13 @@
 (show-paren-mode 1)  
 ;;; theme で設定します。
 ;; 括弧の背景を灰色にします。
-;;(set-face-background 'show-paren-match-face "gray85"))
+;;(set-face-background 'show-paren-match-face "gray85")
 
 ;;; auto-fill モード
-(setq-default auto-fill-function 'do-auto-fill)
 (let ((fill-column 300))
   (set-fill-column fill-column))
+;;(setq-default auto-fill-function 'do-auto-fill)
+(setq auto-fill-mode nil)
 
 ;; EOB を表示します。
 (setq-default indicate-empty-lines t)

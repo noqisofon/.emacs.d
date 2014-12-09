@@ -11,12 +11,13 @@
 (setq version-control t)
 
 (when version-control
-  ;; 新しいものを 12 つまで残すようにします。
-  (setq kept-new-version 12)
-  ;; 古いものを 12 つまで残すようにします。
-  (setq kept-old-version 12)
+  (let ((amount 12))
+    ;; 新しいものを 12 つまで残すようにします。
+    (setq kept-new-version amount)
+    ;; 古いものを 12 つまで残すようにします。
+    (setq kept-old-version amount))
   ;; 古いバージョンを消す際、Emacs から尋ねないようにします。
-  (setq delete-old-versions t)
+  (setq delete-old-versions t))
 
 ;;; オートセーブファイル関係
 ;;
