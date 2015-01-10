@@ -31,6 +31,8 @@
 (load "001-recent")
 (load "001-session")
 
+(load "002-emmet")
+
 (load "010-light-markup-langage")
 (load "020-version-control")
 

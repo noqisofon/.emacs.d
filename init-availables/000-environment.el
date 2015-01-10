@@ -40,7 +40,7 @@
 (add-hook 'kill-emacs-query-functions 'after-byte-compile)
 
 (load "000-display")
-;;(load "000-font")
+(load "000-font")
 (load "000-text-editor")
 (load "000-scroll-bar")
 (load "000-backup")

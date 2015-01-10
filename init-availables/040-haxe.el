@@ -1,6 +1,6 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
 
-;;; 040-programing-language.el ---
+;;; 040-haxe.el ---
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -25,16 +25,11 @@
 ;; 
 
 ;;; Code:
-(load "040-c-common")
-(load "040-lisp-common")
+;; Haxe モード。
+(push '("\\.haxe$" . haxe-mode) auto-mode-alist)
 
-(load "040-csharp")
-(load "040-d")
-(load "040-dart")
-(load "040-haxe")
-(load "040-ruby")
-(load "040-vala")
+(lazyload (haxe-mode) "haxe-mode")
 
 
-(provide '040-programing-language)
-;;; 040-programing-language.el ends here
+(provide '040-haxe)
+;;; 040-haxe.el ends here

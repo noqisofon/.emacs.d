@@ -6,3 +6,4 @@
 (load "010-markdown")
 (load "010-haml")
 (load "010-sass")
+(load "010-sgml")

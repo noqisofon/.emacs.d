@@ -1,6 +1,5 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
-
-;;; 040-programing-language.el ---
+;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
+;;; 002-emmet.el ---
 
 ;; Copyright (C) 2014  ned rihine
 
@@ -25,16 +24,11 @@
 ;; 
 
 ;;; Code:
-(load "040-c-common")
-(load "040-lisp-common")
-
-(load "040-csharp")
-(load "040-d")
-(load "040-dart")
-(load "040-haxe")
-(load "040-ruby")
-(load "040-vala")
+(require-if-exists emmet-mode
+                   (add-hook 'sgml-mode-hook 'emmet-mode)
+                   (add-hook 'html-mode-hook 'emmet-mode)
+                   (add-hook 'text-mode-hook 'emmet-mode))
 
 
-(provide '040-programing-language)
-;;; 040-programing-language.el ends here
+(provide '002-emmet)
+;;; 002-emmet.el ends here
