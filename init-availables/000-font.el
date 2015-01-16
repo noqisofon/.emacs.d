@@ -25,45 +25,22 @@
 ;; 
 
 ;;; Code:
-;; フォント名を指定して使用するフォントを設定します。
-(defun setting-font (font-name &optional size)
-  (unless size
-    (setq size 13))
-  (let* ((fontset-name font-name)
-         (ascii-font font-name)
-         (multibyte-font font-name)
-         (height (* size 10))
-         (font (format "%s-%d:weight=normal:slant=normal" ascii-font size))
-         (ascii-fontspec (font-spec :family ascii-font))
-         (multibyte-fontspec (font-spec :family multibyte-font)))
-    (let ((fontset (create-fontset-from-ascii-font font nil fontset-name)))
-      (set-face-attribute 'default nil :family ascii-font)
-      (set-fontset-font fontset 'japanese-jisx0213.2004-1 multibyte-fontspec)
-      (set-fontset-font fontset 'japanese-jisx0213-2 multibyte-fontspec)
-      ;; 半角カナ
-      (set-fontset-font fontset 'katakana-jisx0201 multibyte-fontspec)
-      ;; 分音符付きラテン
-      (set-fontset-font fontset '(#x0080 . #x024F) ascii-fontspec)
-      ;; ギリシャ文字
-      (set-fontset-font fontset '(#x0370 . #x03FF) ascii-fontspec))))
+(require 'cl)
 
-(if (not darwinp)
-    (let ((font-name)
-          (found-flag nil)
-          (after-font-name-list '("Ricty" "Migu 1M" "TakaoGothic" "IPAGothic" "MS Gothic")))
-      (while after-font-name-list
-        ;; x:xs を設定します。
-        (setq font-name (car after-font-name-list)
-              after-font-name-list (cdr after-font-name-list))
-        (when (not found-flag)
-          ;; font-name が存在するかどうか調べます。
-          (if (find-font (font-spec :family font-name))
-              (progn
-                (setting-font font-name)
-                ;; 存在したら、found-flags に t を設定して find-font をスキップするようにします。
-                (setq found-flag t))))))
-  ;; else
-  (set-face-font 'default "fontset-ricty"))
+(defun generate-font-string (font-name size)
+  "フォント名とフォントサイズを取って Emacs 用のフォント名形式に変換します。"
+  (format "%s-%d:weight=normal" font-name size))
+
+(defun font-candidate (&rest fonts)
+  "Return existing font which first match."
+  (find-if (lambda (font)
+             (find-font (font-spec :name font)))
+           fonts))
+
+(set-frame-font (apply #'font-candidate
+                       (mapcar (lambda (font-name)
+                                 (generate-font-string font-name 10))
+                               '("Ricty" "Migu 2M" "Migu 1M" "TakaoGothic" "IPAGothic" "MS Gothic"))))
 
 (provide '000-font)
 ;;; 000-font.el ends here
