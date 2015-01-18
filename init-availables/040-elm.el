@@ -1,8 +1,10 @@
-;;; 020-sass.el ---                                  -*- lexical-binding: t; -*-
+;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
 
-;; Copyright (C) 2014  ned rihine
+;;; 040-elm.el ---
 
-;; Author:  <ned.rihine@gmail.com>
+;; Copyright (C) 2015  ned rihine
+
+;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -23,9 +25,11 @@
 ;; 
 
 ;;; Code:
-(require-if-exists sass-mode)
-(require-if-exists scss-mode)
+(require-if-exists elm-mode)
+
+;; elm モード
+(push '("\\.elm$" . elm-mode) auto-mode-alist)
 
 
-(provide '020-sass)
-;;; 020-sass.el ends here
+(provide '040-elm)
+;;; 040-elm.el ends here

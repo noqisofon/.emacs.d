@@ -1,8 +1,6 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
+;;; 000-auto-complete.el ---                         -*- lexical-binding: t; -*-
 
-;;; 040-programing-language.el ---
-
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2015  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,18 +23,11 @@
 ;; 
 
 ;;; Code:
-(load "040-c-common")
-(load "040-lisp-common")
+(require-if-exists auto-complete)
+(require-if-exists auto-complete-config)
 
-(load "040-csharp")
-(load "040-d")
-(load "040-elm")
-(load "040-dart")
-(load "040-haxe")
-(load "040-haskell")
-(load "040-ruby")
-(load "040-vala")
+(global-auto-complete-mode t)
 
 
-(provide '040-programing-language)
-;;; 040-programing-language.el ends here
+(provide '000-auto-complete)
+;;; 000-auto-complete.el ends here
