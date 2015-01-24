@@ -48,3 +48,4 @@
 (load "000-emacs-client")
 (load "000-autoinsert")
 (load "000-elscreen")
+(load "000-auto-complete")
