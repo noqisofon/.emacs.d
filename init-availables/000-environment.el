@@ -49,3 +49,4 @@
 (load "000-autoinsert")
 (load "000-elscreen")
 (load "000-auto-complete")
+(load "000-slime")
