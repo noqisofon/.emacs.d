@@ -31,3 +31,5 @@ private/
 #
 kkcrc
 *.dat
+
+!.gitkeep
