@@ -1,8 +1,6 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
+;;; 040-ocaml.el ---                                 -*- lexical-binding: t; -*-
 
-;;; 040--programing-language.el ---
-
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2015  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,11 +23,9 @@
 ;; 
 
 ;;; Code:
-(load "040-c-common")
-(load "040-lisp-common")
+(push '("\\.ocaml$" . tuareg-mode) auto-mode-alist)
 
-(load "042-c++")
-(load "042-scheme")
+(lazyload tuareg-mode "tuareg")
 
-(provide '040--programing-language)
-;;; 040--programing-language.el ends here
+(provide '040-ocaml)
+;;; 040-ocaml.el ends here

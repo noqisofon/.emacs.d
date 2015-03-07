@@ -25,7 +25,6 @@
 ;; 
 
 ;;; Code:
-
 (unless (boundp 'user-emacs-directory)
   (defvar user-emacs-directory (expand-file-name "~/.emacs.d/")))
 
@@ -43,5 +42,4 @@
 
 (load "000-environment")
 (load "000-init")
-
 ;;; init.el ends here
