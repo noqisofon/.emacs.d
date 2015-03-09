@@ -25,7 +25,7 @@
 ;;; Code:
 (push '("\\.ocaml$" . tuareg-mode) auto-mode-alist)
 
-(lazyload tuareg-mode "tuareg")
+(lazyload (tuareg-mode) "tuareg")
 
 (provide '040-ocaml)
 ;;; 040-ocaml.el ends here
