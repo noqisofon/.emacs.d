@@ -23,7 +23,7 @@
 ;; 
 
 ;;; Code:
-(push '("\\.ocaml$" . tuareg-mode) auto-mode-alist)
+(push '("\\.ml$" . tuareg-mode) auto-mode-alist)
 
 (lazyload (tuareg-mode) "tuareg")
 
