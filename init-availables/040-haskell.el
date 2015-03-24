@@ -26,10 +26,19 @@
 
 ;;; Code:
 (push '("\\.hs$" . haskell-mode) auto-mode-alist)
+(push '("\\.lhs$" . literate-haskell-mode) auto-mode-alist)
+(push '("\\.cabel$" . haskell-cabal-mode) auto-mode-alist)
 
-(require-if-exists haskell-mode)
-(require-if-exists haskell-cabal)
+(push '("runghc" . haskell-mode) interpreter-mode-alist)
+(push '("runhaskell" . haskell-mode) interpreter-mode-alist)
 
+(lazyload (haskell-mode) "haskell-mode")
+(lazyload (haskell-cabal) "haskell-cabal")
+
+(add-hook 'haskell-mode-hook 'turn-on-haskell-indentation)
+(add-hook 'haskell-mode-hook 'turn-on-haskell-doc-mode)
+(add-hook 'haskell-mode-hook 'font-lock-mode)
+(add-hook 'haskell-mode-hook 'imenu-add-menubar-index)
 
 (provide '040-haskell)
 ;;; 040-haskell.el ends here

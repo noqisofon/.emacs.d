@@ -23,7 +23,9 @@
 ;; 
 
 ;;; Code:
-(push '("\\.ml$" . tuareg-mode) auto-mode-alist)
+(push '("\\.ml[ily]$" . tuareg-mode) auto-mode-alist)
+(push '("\\.topml$" . tuareg-mode) auto-mode-alist)
+(push '("\\.ocaml$" . tuareg-mode) auto-mode-alist)
 
 (lazyload (tuareg-mode) "tuareg")
 

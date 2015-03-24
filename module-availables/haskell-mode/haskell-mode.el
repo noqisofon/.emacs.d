@@ -9,6 +9,7 @@
 ;;          2001-2002 Reuben Thomas (>=v1.4)
 ;;          2003      Dave Love <fx@gnu.org>
 ;; Keywords: faces files Haskell
+;; Version: 13.12
 ;; URL: https://github.com/haskell/haskell-mode
 
 ;; This file is not part of GNU Emacs.
@@ -170,9 +171,9 @@ When MESSAGE is non-nil, display a message with the version."
   (interactive)
   (with-current-buffer (find-file-read-only (expand-file-name "NEWS" haskell-mode-pkg-base-dir))
     (goto-char (point-min))
-    (hide-sublevels 1)
+    (outline-hide-sublevels 1)
     (outline-next-visible-heading 1)
-    (show-subtree)))
+    (outline-show-subtree)))
 
 ;; Are we looking at a literate script?
 (defvar haskell-literate nil
@@ -193,7 +194,6 @@ be set to the preferred literate style."
   :group 'haskell
   :type '(choice (const bird) (const tex) (const nil)))
 
-;;;###autoload
 (defvar haskell-mode-map
   (let ((map (make-sparse-keymap)))
     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -458,55 +458,28 @@ Run M-x describe-variable haskell-mode-hook for a list of such modes."))
     (modify-syntax-entry ?\t " " table)
     (modify-syntax-entry ?\" "\"" table)
     (modify-syntax-entry ?\' "_" table)
-    (modify-syntax-entry ?_  "w" table)
+    (modify-syntax-entry ?_  "_" table)
     (modify-syntax-entry ?\( "()" table)
     (modify-syntax-entry ?\) ")(" table)
     (modify-syntax-entry ?\[  "(]" table)
     (modify-syntax-entry ?\]  ")[" table)
 
-    (cond ((featurep 'xemacs)
-           ;; I don't know whether this is equivalent to the below
-           ;; (modulo nesting).  -- fx
-           (modify-syntax-entry ?{  "(}5" table)
-           (modify-syntax-entry ?}  "){8" table)
-           (modify-syntax-entry ?-  "_ 1267" table))
-          (t
-           ;; In Emacs 21, the `n' indicates that they nest.
-           ;; The `b' annotation is actually ignored because it's only
-           ;; meaningful on the second char of a comment-starter, so
-           ;; on Emacs 20 and before we get wrong results.  --Stef
-           (modify-syntax-entry ?\{  "(}1nb" table)
-           (modify-syntax-entry ?\}  "){4nb" table)
-           (modify-syntax-entry ?-  "_ 123" table)))
+    (modify-syntax-entry ?\{  "(}1nb" table)
+    (modify-syntax-entry ?\}  "){4nb" table)
+    (modify-syntax-entry ?-  ". 123" table)
     (modify-syntax-entry ?\n ">" table)
-
-    (let (i lim)
-      (map-char-table
-       (lambda (k v)
-         (when (equal v '(1))
-           ;; The current Emacs 22 codebase can pass either a char
-           ;; or a char range.
-           (if (consp k)
-               (setq i (car k)
-                     lim (cdr k))
-             (setq i k
-                   lim k))
-           (while (<= i lim)
-             (when (> i 127)
-               (modify-syntax-entry i "_" table))
-             (setq i (1+ i)))))
-       (standard-syntax-table)))
 
     (modify-syntax-entry ?\` "$`" table)
     (modify-syntax-entry ?\\ "\\" table)
     (mapc (lambda (x)
-            (modify-syntax-entry x "_" table))
-          ;; Some of these are actually OK by default.
+            (modify-syntax-entry x "." table))
           "!#$%&*+./:<=>?@^|~")
 
-    ;; Precise syntax table entries for symbol characters
+    ;; Haskell symbol characters are treated as punctuation because
+    ;; they are not able to form identifiers with word constituent 'w'
+    ;; class characters.
     (dolist (charcodes haskell--char-syntax-symbols)
-      (modify-syntax-entry charcodes "_" table))
+      (modify-syntax-entry charcodes "." table))
     ;; ... and for identifier characters
     (dolist (charcodes haskell--char-syntax-identifiers)
       (modify-syntax-entry charcodes "w" table))
@@ -748,11 +721,11 @@ see documentation for that variable for more details."
                   (forward-sexp)
                   ;; Find end of any comment even if forward-sexp
                   ;; fails to find the right braces.
-                  (backward-char 2)
-                  (re-search-forward "-}" nil t)
-                  (point)))
+                  (backward-char 3)
+                  (re-search-forward "[ \t]?-}" nil t)
+                  (match-beginning 0)))
                (fill-start (+ 2 comment-start-point))
-               (fill-end (- comment-end-point 2))
+               (fill-end comment-end-point)
                (fill-paragraph-handle-comment nil))
           (save-restriction
             (narrow-to-region fill-start fill-end)
@@ -807,6 +780,8 @@ see documentation for that variable for more details."
 ;;;###autoload
 (add-to-list 'auto-mode-alist        '("\\.l[gh]s\\'" . literate-haskell-mode))
 ;;;###autoload
+(add-to-list 'auto-mode-alist        '("\\.hsc\\'" . haskell-mode))
+;;;###autoload
 (add-to-list 'interpreter-mode-alist '("runghc" . haskell-mode))
 ;;;###autoload
 (add-to-list 'interpreter-mode-alist '("runhaskell" . haskell-mode))
@@ -820,6 +795,15 @@ If nil, use the Hoogle web-site."
   :group 'haskell
   :type '(choice (const :tag "Use Web-site" nil)
                  string))
+
+(defcustom haskell-hoogle-url "http://haskell.org/hoogle/?q=%s"
+  "Default value for hoogle web site.
+"
+  :group 'haskell
+  :type '(choice
+          (const :tag "haskell-org" "http://haskell.org/hoogle/?q=%s")
+          (const :tag "fp-complete" "https://www.fpcomplete.com/hoogle?q=%s")
+          string))
 
 ;;;###autoload
 (defun haskell-hoogle (query &optional info)
@@ -838,7 +822,7 @@ is asked to show extra info for the items matching QUERY.."
                         nil nil def)
            current-prefix-arg)))
   (if (null haskell-hoogle-command)
-      (browse-url (format "http://haskell.org/hoogle/?q=%s" query))
+      (browse-url (format haskell-hoogle-url (url-hexify-string query)))
     (let ((hoogle-args (append (when info '("-i"))
                                (list "--color" (shell-quote-argument query)))))
       (with-help-window "*hoogle*"
@@ -891,6 +875,14 @@ is asked to show extra info for the items matching QUERY.."
           (hoogle-start-server)
         (error "hoogle is not installed")))))
 
+(defcustom haskell-hayoo-url "http://hayoo.fh-wedel.de/?query=%s"
+  "Default value for hayoo web site.
+"
+  :group 'haskell
+  :type '(choice
+          (const :tag "fh-wedel.de" "http://hayoo.fh-wedel.de/?query=%s")
+          string))
+
 ;;;###autoload
 (defun haskell-hayoo (query)
   "Do a Hayoo search for QUERY."
@@ -901,7 +893,7 @@ is asked to show extra info for the items matching QUERY.."
                             (format "Hayoo query (default %s): " def)
                           "Hayoo query: ")
                         nil nil def))))
-  (browse-url (format "http://holumbus.fh-wedel.de/hayoo/hayoo.html?query=%s" query)))
+  (browse-url (format haskell-hayoo-url (url-hexify-string query))))
 
 ;;;###autoload
 (defalias 'hayoo 'haskell-hayoo)
@@ -1033,27 +1025,19 @@ LOC = (list FILE LINE COL)"
                              collect (replace-regexp-in-string "\\.l?hs$" "" part))))
     (mapconcat 'identity (reverse components) ".")))
 
+(defvar haskell-auto-insert-module-format-string
+  "-- | \n\nmodule %s where\n\n"
+  "Template string that will be inserted in new haskell buffers via `haskell-auto-insert-module-template'.")
+
 (defun haskell-auto-insert-module-template ()
   "Insert a module template for the newly created buffer."
   (interactive)
   (when (and (= (point-min)
                 (point-max))
              (buffer-file-name))
-    (insert
-     "-- | "
-     "\n"
-     "\n"
-     "module "
-     )
-    (let ((name (haskell-guess-module-name)))
-      (if (string= name "")
-          (insert "")
-        (insert name)))
-    (insert " where"
-            "\n"
-            "\n")
+    (insert (format haskell-auto-insert-module-format-string (haskell-guess-module-name)))
     (goto-char (point-min))
-    (forward-char 4)))
+    (end-of-line)))
 
 
 ;; Provide ourselves:

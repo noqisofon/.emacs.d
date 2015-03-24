@@ -26,9 +26,10 @@
 (require 'cl-lib)
 (require 'json)
 (require 'url-util)
+(require 'haskell-compat)
 (require 'haskell-session)
 (require 'haskell-customize)
-(require 'haskell-str)
+(require 'haskell-string)
 
 (defconst haskell-process-prompt-regex "\4"
   "Used for delimiting command replies. 4 is End of Transmission.")
@@ -78,28 +79,32 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
   (let ((session-name (haskell-session-name session)))
     (cl-ecase hptype
       ('ghci
-       (append (list (format "Starting inferior GHCi process %s ..." haskell-process-path-ghci)
+       (append (list (format "Starting inferior GHCi process %s ..."
+                             haskell-process-path-ghci)
                      session-name
                      nil)
-               (apply haskell-process-wrapper-function (list (cons haskell-process-path-ghci haskell-process-args-ghci)))))
+               (apply haskell-process-wrapper-function
+                      (list
+                       (cons haskell-process-path-ghci haskell-process-args-ghci)))))
       ('cabal-repl
-       (append (list (format "Starting inferior `cabal repl' process using %s ..." haskell-process-path-cabal)
+       (append (list (format "Starting inferior `cabal repl' process using %s ..."
+                             haskell-process-path-cabal)
                      session-name
                      nil)
-               (apply haskell-process-wrapper-function (list (cons haskell-process-path-cabal (cons "repl" haskell-process-args-cabal-repl))))
-               (let ((target (haskell-session-target session)))
-                 (if target (list target) nil))))
+               (apply haskell-process-wrapper-function
+                      (list
+                       (append
+                        (list haskell-process-path-cabal "repl")
+                        haskell-process-args-cabal-repl
+                        (let ((target (haskell-session-target session)))
+                          (if target (list target) nil)))))))
       ('cabal-ghci
-       (append (list (format "Starting inferior cabal-ghci process using %s ..." haskell-process-path-cabal-ghci)
+       (append (list (format "Starting inferior cabal-ghci process using %s ..."
+                             haskell-process-path-cabal-ghci)
                      session-name
                      nil)
-               (apply haskell-process-wrapper-function (list (list haskell-process-path-cabal-ghci)))))
-      ('cabal-dev
-       (let ((dir (concat (haskell-session-cabal-dir session) "/cabal-dev")))
-         (append (list (format "Starting inferior cabal-dev process %s -s %s ..." haskell-process-path-cabal-dev dir)
-                       session-name
-                       nil)
-                 (apply haskell-process-wrapper-function (list (cons haskell-process-path-cabal-dev (list "ghci" "-s" dir))))))))))
+               (apply haskell-process-wrapper-function
+                      (list (list haskell-process-path-cabal-ghci))))))))
 
 (defun haskell-process-make (name)
   "Make an inferior Haskell process."
@@ -217,6 +222,7 @@ the response."
           (haskell-process-send-string (car state)
                                        (cdr state))))))
 
+
 (defun haskell-process-queue-command (process command)
   "Add a command to the process command queue."
   (haskell-process-cmd-queue-add process command)
@@ -260,17 +266,17 @@ This uses `accept-process-output' internally."
 (defun haskell-process-get-repl-completions (process inputstr)
   "Perform `:complete repl ...' query for INPUTSTR using PROCESS."
   (let* ((reqstr (concat ":complete repl "
-                         (haskell-str-literal-encode inputstr)))
+                         (haskell-string-literal-encode inputstr)))
          (rawstr (haskell-process-queue-sync-request process reqstr)))
     (if (string-prefix-p "unknown command " rawstr)
-        (error "GHCi lacks `:complete' support")
+        (error "GHCi lacks `:complete' support (try installing 7.8 or ghci-ng)")
       (let* ((s1 (split-string rawstr "\r?\n" t))
-             (cs (mapcar #'haskell-str-literal-decode (cdr s1)))
+             (cs (mapcar #'haskell-string-literal-decode (cdr s1)))
              (h0 (car s1))) ;; "<cnt1> <cnt2> <quoted-str>"
         (unless (string-match "\\`\\([0-9]+\\) \\([0-9]+\\) \\(\".*\"\\)\\'" h0)
           (error "Invalid `:complete' response"))
         (let ((cnt1 (match-string 1 h0))
-              (h1 (haskell-str-literal-decode (match-string 3 h0))))
+              (h1 (haskell-string-literal-decode (match-string 3 h0))))
           (unless (= (string-to-number cnt1) (length cs))
             (error "Lengths inconsistent in `:complete' reponse"))
           (cons h1 cs))))))
