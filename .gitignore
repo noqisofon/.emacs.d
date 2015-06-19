@@ -23,7 +23,9 @@
 # 
 auto-save-mode/
 tramp/
-server/private/
+server/
+private/
+
 # ============================================================
 # 
 # Other files
