@@ -416,7 +416,7 @@ SESSION, otherwise operate on the current buffer.
       (message "%s"
                (concat (car lines)
                        (if (and (cdr lines) (stringp (cadr lines)))
-                           (format " [ %s .. ]" (haskell-string-take (haskell-trim (cadr lines)) 10))
+                           (format " [ %s .. ]" (haskell-string-take (haskell-string-trim (cadr lines)) 10))
                          ""))))))
 
 (defun haskell-interactive-mode-tab ()
@@ -560,7 +560,10 @@ FILE-NAME only."
            (format "Add `%s' to %s?"
                    package-name
                    cabal-file))
-      (haskell-cabal-add-dependency package-name version nil t))))
+      (haskell-cabal-add-dependency package-name version nil t)
+      (when (y-or-n-p (format "Enable -package %s in the GHCi session?" package-name))
+        (haskell-process-queue-without-filters (haskell-session-process session)
+                                               (format ":set -package %s" package-name))))))
 
 (defun haskell-process-suggest-remove-import (session file import line)
   "Suggest removing or commenting out IMPORT on LINE."
@@ -1054,14 +1057,31 @@ don't care when the thing completes as long as it's soonish."
                             'read-only t
                             'rear-nonsticky t))))))
 
+(defun haskell-interactive-mode-splices-buffer (session)
+  "Get the splices buffer for the current session."
+  (get-buffer-create (haskell-interactive-mode-splices-buffer-name session)))
+
+(defun haskell-interactive-mode-splices-buffer-name (session)
+  (format "*%s:splices*" (haskell-session-name session)))
+
 (defun haskell-interactive-mode-compile-splice (session message)
   "Echo a compiler splice."
-  (with-current-buffer (haskell-session-interactive-buffer session)
-    (setq next-error-last-buffer (current-buffer))
-    (save-excursion
-      (haskell-interactive-mode-goto-end-point)
-      (insert (haskell-fontify-as-mode message 'haskell-mode)
-              "\n"))))
+  (with-current-buffer (haskell-interactive-mode-splices-buffer session)
+    (unless (eq major-mode 'haskell-mode)
+      (haskell-mode))
+    (let* ((parts (split-string message "\n  ======>\n"))
+           (file-and-decl-lines (split-string (nth 0 parts) "\n"))
+           (file (nth 0 file-and-decl-lines))
+           (decl (mapconcat #'identity (cdr file-and-decl-lines) "\n"))
+           (output (nth 1 parts)))
+      (insert "-- " file "\n")
+      (let ((start (point)))
+        (insert decl "\n")
+        (indent-rigidly start (point) -4))
+      (insert "-- =>\n")
+      (let ((start (point)))
+        (insert output "\n")
+        (indent-rigidly start (point) -4)))))
 
 (defun haskell-interactive-mode-insert-garbage (session message)
   "Echo a read only piece of text before the prompt."
@@ -1090,7 +1110,7 @@ haskell-present, depending on configuration."
                   ;; `haskell-process-use-presentation-mode' is t.
                   (haskell-interactive-mode-echo
                    (haskell-process-session (car state))
-                   response
+                   (replace-regexp-in-string "\n\\'" "" response)
                    (cl-caddr state))
                   (if haskell-process-use-presentation-mode
                       (progn (haskell-present (cadr state)

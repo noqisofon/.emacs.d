@@ -6,7 +6,6 @@
 ;; Author: 1997-1998 Guy Lapalme <lapalme@iro.umontreal.ca>
 
 ;; Keywords: indentation Haskell layout-rule
-;; Version: 1.2
 ;; URL: http://www.iro.umontreal.ca/~lapalme/layout/index.html
 
 ;; This file is not part of GNU Emacs.
@@ -400,7 +399,7 @@ Returns the location of the start of the comment, nil otherwise."
    ((looking-at "\\(\\([[:alpha:]]\\(\\sw\\|'\\)*\\)\\|_\\)[ \t\n]*")
     'ident)
    ((looking-at "\\(|[^|]\\)[ \t\n]*") 'guard)
-   ((looking-at "\\(=[^>=]\\|::\\|->\\|<-\\)[ \t\n]*") 'rhs)
+   ((looking-at "\\(=[^>=]\\|::\\|∷\\|→\\|←\\|->\\|<-\\)[ \t\n]*") 'rhs)
    (t 'other)))
 
 (defvar haskell-indent-current-line-first-ident ""
@@ -659,8 +658,8 @@ Returns the location of the start of the comment, nil otherwise."
           (string-match "where[ \t]*" haskell-indent-current-line-first-ident))
          (diff-first                 ; not a function def with the same name
           (or (null valname-string)
-              (not (string= (haskell-trim valname-string)
-                            (haskell-trim haskell-indent-current-line-first-ident)))))
+              (not (string= (haskell-string-trim valname-string)
+                            (haskell-string-trim haskell-indent-current-line-first-ident)))))
 
          ;; (is-type-def
          ;;  (and rhs-sign (eq (char-after rhs-sign) ?\:)))

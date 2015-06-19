@@ -29,10 +29,12 @@
 (load "040-lisp-common")
 
 (load "040-csharp")
+(load "040-coffee-script")
 (load "040-d")
 (load "040-elm")
 (load "040-dart")
 (load "040-haxe")
+(load "040-ocaml")
 (load "040-haskell")
 (load "040-ruby")
 (load "040-vala")

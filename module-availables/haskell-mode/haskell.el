@@ -25,6 +25,9 @@
 (require 'haskell-repl)
 (require 'haskell-load)
 (require 'haskell-commands)
+(require 'haskell-sandbox)
+(require 'haskell-modules)
+(require 'haskell-string)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic configuration hooks
@@ -55,14 +58,26 @@
 
 (defun haskell-process-completions-at-point ()
   "A completion-at-point function using the current haskell process."
-  (let ((process (haskell-process))
-        (symbol (symbol-at-point)))
-    (when (and process symbol)
-      (cl-destructuring-bind (start . end) (bounds-of-thing-at-point 'symbol)
-        (let ((completions (haskell-process-get-repl-completions
-                            process
-                            (symbol-name symbol))))
-          (list start end completions))))))
+  (when (haskell-session-maybe)
+    (let ((process (haskell-process)) symbol)
+      (cond
+       ;; ghci can complete module names, but it needs the "import "
+       ;; string at the beginning
+       ((looking-back (rx line-start
+                          "import" (1+ space)
+                          (? "qualified" (1+ space))
+                          (group (? (char upper) ; modid
+                                    (* (char alnum ?' ?.))))))
+        (let ((text (match-string-no-properties 0))
+              (start (match-beginning 1))
+              (end (match-end 1)))
+          (list start end
+                (haskell-process-get-repl-completions process text))))
+       ((setq symbol (symbol-at-point))
+        (cl-destructuring-bind (start . end) (bounds-of-thing-at-point 'symbol)
+          (let ((completions (haskell-process-get-repl-completions
+                              process (symbol-name symbol))))
+            (list start end completions))))))))
 
 ;;;###autoload
 (defun haskell-interactive-mode-return ()
@@ -175,18 +190,39 @@
   "Prompt to restart the died process."
   (let ((process-name (haskell-process-name process)))
     (if haskell-process-suggest-restart
-        (cl-case (read-event
-                  (propertize (format "The Haskell process `%s' has died. Restart? (y, n, l: show process log)"
-                                      process-name)
-                              'face 'minibuffer-prompt))
-          (?y (haskell-process-start (haskell-process-session process)))
-          (?l (let* ((response (haskell-process-response process))
-                     (buffer (get-buffer "*haskell-process-log*")))
-                (if buffer
-                    (switch-to-buffer buffer)
-                  (progn (switch-to-buffer (get-buffer-create "*haskell-process-log*"))
-                         (insert response)))))
-          (?n))
+        (cond
+         ((string-match "You need to re-run the 'configure' command."
+                        (haskell-process-response process))
+          (cl-case (read-event
+                    (concat "The Haskell process ended. Cabal wants you to run "
+                            (propertize "cabal configure" 'face 'font-lock-keyword-face)
+                            " because there is a version mismatch. Re-configure (y, n, l: view log)?"
+                            "\n\n"
+                            "Cabal said:\n\n"
+                            (propertize (haskell-process-response process)
+                                        'face 'font-lock-comment-face)))
+            (?y (let ((default-directory (haskell-session-cabal-dir (haskell-process-session process))))
+                  (message "%s" (shell-command-to-string "cabal configure"))))
+            (?l (let* ((response (haskell-process-response process))
+                       (buffer (get-buffer "*haskell-process-log*")))
+                  (if buffer
+                      (switch-to-buffer buffer)
+                    (progn (switch-to-buffer (get-buffer-create "*haskell-process-log*"))
+                           (insert response)))))
+            (?n)))
+         (t
+          (cl-case (read-event
+                    (propertize (format "The Haskell process `%s' has died. Restart? (y, n, l: show process log)"
+                                        process-name)
+                                'face 'minibuffer-prompt))
+            (?y (haskell-process-start (haskell-process-session process)))
+            (?l (let* ((response (haskell-process-response process))
+                       (buffer (get-buffer "*haskell-process-log*")))
+                  (if buffer
+                      (switch-to-buffer buffer)
+                    (progn (switch-to-buffer (get-buffer-create "*haskell-process-log*"))
+                           (insert response)))))
+            (?n))))
       (message (format "The Haskell process `%s' is dearly departed."
                        process-name)))))
 
@@ -236,7 +272,12 @@
            (let ((module (haskell-complete-module-read
                           "Module: "
                           (haskell-session-all-modules (haskell-session)))))
-             (insert module)
+             (let ((mapping (assoc module haskell-import-mapping)))
+               (if mapping
+                   (progn (delete-region (line-beginning-position)
+                                         (line-end-position))
+                          (insert (cdr mapping)))
+                 (insert module)))
              (haskell-mode-format-imports)))
           ((not (string= "" (save-excursion (forward-char -1) (haskell-ident-at-point))))
            (let ((ident (save-excursion (forward-char -1) (haskell-ident-at-point))))
@@ -251,7 +292,7 @@
   (let ((ident (haskell-ident-at-point))
         (tags-file-name (haskell-session-tags-filename (haskell-session)))
         (tags-revert-without-query t))
-    (when (not (string= "" (haskell-trim ident)))
+    (when (not (string= "" (haskell-string-trim ident)))
       (cond ((file-exists-p tags-file-name)
              (find-tag ident next-p))
             (t (haskell-process-generate-tags ident))))))

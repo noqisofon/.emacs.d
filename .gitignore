@@ -23,11 +23,12 @@
 # 
 auto-save-mode/
 tramp/
-server/
-
+server/private/
 # ============================================================
 # 
 # Other files
 #
 kkcrc
 *.dat
+
+!.gitkeep

@@ -44,7 +44,7 @@ Used for locating additional package data files.")
 (defcustom haskell-process-type
   'auto
   "The inferior Haskell process type to use."
-  :type '(choice (const auto) (const ghci) (const cabal-repl) (const cabal-dev) (const cabal-ghci))
+  :type '(choice (const auto) (const ghci) (const cabal-repl) (const cabal-ghci))
   :group 'haskell-interactive)
 
 (defcustom haskell-process-wrapper-function
@@ -57,7 +57,7 @@ and returns a possibly-modified list.
 The following example function arranges for all haskell process
 commands to be started in the current nix-shell environment:
 
-  (lambda (argv) (append (list \"nix-shell\" \"default.nix\" \"--command\" )
+  (lambda (argv) (append (list \"nix-shell\" \"-I\" \".\" \"--command\" )
                     (list (mapconcat 'identity argv \" \"))))
 
 See Info Node `(emacs)Directory Variables' for a way to set this option on
@@ -76,6 +76,13 @@ a per-project basis."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Configuration
+
+(defcustom haskell-doc-prettify-types t
+  "Replace some parts of types with Unicode characters like \"∷\"
+when showing type information about symbols."
+  :group 'haskell-doc
+  :type 'boolean
+  :safe 'booleanp)
 
 (defvar haskell-process-end-hook nil
   "Hook for when the haskell process ends.")
@@ -100,12 +107,6 @@ a per-project basis."
 (defcustom haskell-process-path-cabal-ghci
   "cabal-ghci"
   "The path for starting cabal-ghci."
-  :group 'haskell-interactive
-  :type '(choice string (repeat string)))
-
-(defcustom haskell-process-path-cabal-dev
-  "cabal-dev"
-  "The path for starting cabal-dev."
   :group 'haskell-interactive
   :type '(choice string (repeat string)))
 
@@ -306,6 +307,32 @@ ambiguous class constraint."
 printing compilation messages."
   :type 'boolean
   :group 'haskell-interactive)
+
+(defcustom haskell-import-mapping
+  '()
+  "Support a mapping from module to import lines.
+
+E.g. '((\"Data.Map\" . \"import qualified Data.Map as M
+import Data.Map (Map)
+\"))
+
+This will import
+
+import qualified Data.Map as M
+import Data.Map (Map)
+
+when Data.Map is the candidate.
+
+"
+  :type '(repeat (cons (string :tag "Module name")
+                       (string :tag "Import lines")))
+  :group 'haskell-interactive)
+
+(defcustom haskell-language-extensions
+  '()
+  "Language extensions in use. Should be in format: -XFoo, -XNoFoo etc."
+  :group 'shm
+  :type '(repeat 'string))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Accessor functions

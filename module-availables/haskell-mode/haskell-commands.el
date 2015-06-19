@@ -18,6 +18,8 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'etags)
+(require 'haskell-compat)
 (require 'haskell-process)
 (require 'haskell-font-lock)
 (require 'haskell-interactive-mode)
@@ -47,58 +49,14 @@
     (haskell-process-set-session process session)
     (haskell-process-set-cmd process nil)
     (haskell-process-set (haskell-session-process session) 'is-restarting nil)
-    (let ((default-directory (haskell-session-cabal-dir session)))
+    (let ((default-directory (haskell-session-cabal-dir session))
+          (log-and-command (haskell-process-compute-process-log-and-command session (haskell-process-type))))
       (haskell-session-pwd session)
       (haskell-process-set-process
        process
-       (cl-ecase (haskell-process-type)
-         ('ghci
-          (haskell-process-log
-           (propertize (format "Starting inferior GHCi process %s ..."
-                               haskell-process-path-ghci)
-                       'face font-lock-comment-face))
-          (apply #'start-process
-                 (append (list (haskell-session-name session)
-                               nil
-                               haskell-process-path-ghci)
-                         haskell-process-args-ghci)))
-         ('cabal-repl
-          (haskell-process-log
-           (propertize
-            (format "Starting inferior `cabal repl' process using %s ..."
-                    haskell-process-path-cabal)
-            'face font-lock-comment-face))
-
-          (apply #'start-process
-                 (append (list (haskell-session-name session)
-                               nil
-                               haskell-process-path-cabal)
-                         '("repl") haskell-process-args-cabal-repl
-                         (let ((target (haskell-session-target session)))
-                           (if target (list target) nil)))))
-         ('cabal-ghci
-          (haskell-process-log
-           (propertize
-            (format "Starting inferior cabal-ghci process using %s ..."
-                    haskell-process-path-cabal-ghci)
-            'face font-lock-comment-face))
-          (start-process (haskell-session-name session)
-                         nil
-                         haskell-process-path-cabal-ghci))
-         ('cabal-dev
-          (let ((dir (concat (haskell-session-cabal-dir session)
-                             "/cabal-dev")))
-            (haskell-process-log
-             (propertize (format "Starting inferior cabal-dev process %s -s %s ..."
-                                 haskell-process-path-cabal-dev
-                                 dir)
-                         'face font-lock-comment-face))
-            (start-process (haskell-session-name session)
-                           nil
-                           haskell-process-path-cabal-dev
-                           "ghci"
-                           "-s"
-                           dir))))))
+       (progn
+         (haskell-process-log (propertize (format "%S" log-and-command)))
+         (apply #'start-process (cdr log-and-command)))))
     (progn (set-process-sentinel (haskell-process-process process) 'haskell-process-sentinel)
            (set-process-filter (haskell-process-process process) 'haskell-process-filter))
     (haskell-process-send-startup process)
@@ -336,15 +294,24 @@ If PROMPT-VALUE is non-nil, request identifier via mini-buffer."
   (interactive "P")
   (if insert-value
       (haskell-process-insert-type)
-    (haskell-process-do-simple-echo
-     (let ((ident (haskell-ident-at-point)))
-       ;; TODO: Generalize all these `string-match' of ident calls into
-       ;; one function.
-       (format (if (string-match "^[_[:lower:][:upper:]]" ident)
-                   ":type %s"
-                 ":type (%s)")
-               ident))
-     'haskell-mode)))
+    (let* ((expr
+            (if (use-region-p)
+                (buffer-substring-no-properties (region-beginning) (region-end))
+              (haskell-ident-at-point)))
+           (expr-okay (and expr
+                         (not (string-match-p "\\`[[:space:]]*\\'" expr))
+                         (not (string-match-p "\n" expr)))))
+      ;; No newlines in expressions, and surround with parens if it
+      ;; might be a slice expression
+      (when expr-okay
+        (haskell-process-do-simple-echo
+         (format
+          (if (or (string-match-p "\\`(" expr)
+                 (string-match-p "\\`[_[:alpha:]]" expr))
+              ":type %s"
+            ":type (%s)")
+          expr)
+         'haskell-mode)))))
 
 ;;;###autoload
 (defun haskell-mode-jump-to-def-or-tag (&optional next-p)
@@ -354,10 +321,9 @@ jump to the tag.
 Remember: If GHCi is busy doing something, this will delay, but
 it will always be accurate, in contrast to tags, which always
 work but are not always accurate.
-
-If the definition or tag is found, the location from which you
-jumped will be pushed onto `find-tag-marker-ring', so you can
-return to that position with `pop-tag-mark'."
+If the definition or tag is found, the location from which you jumped
+will be pushed onto `xref--marker-ring', so you can return to that
+position with `xref-pop-marker-stack'."
   (interactive "P")
   (let ((initial-loc (point-marker))
         (loc (haskell-mode-find-def (haskell-ident-at-point))))
@@ -365,8 +331,11 @@ return to that position with `pop-tag-mark'."
         (haskell-mode-handle-generic-loc loc)
       (call-interactively 'haskell-mode-tag-find))
     (unless (equal initial-loc (point-marker))
-      ;; Store position for return with `pop-tag-mark'
-      (ring-insert find-tag-marker-ring initial-loc))))
+      (save-excursion
+        (goto-char initial-loc)
+        (set-mark-command nil)
+        ;; Store position for return with `xref-pop-marker-stack'
+        (xref-push-marker-stack)))))
 
 ;;;###autoload
 (defun haskell-mode-goto-loc ()
@@ -380,7 +349,7 @@ command from GHCi."
 (defun haskell-mode-goto-span (span)
   "Jump to the span, whatever file and line and column it needs
 to to get there."
-  (ring-insert find-tag-marker-ring (point-marker))
+  (xref-push-marker-stack)
   (find-file (expand-file-name (plist-get span :path)
                                (haskell-session-cabal-dir (haskell-interactive-session))))
   (goto-char (point-min))
@@ -647,8 +616,8 @@ command from GHCi."
                     "\n"))
            (t
             (save-excursion
-              (let ((col (save-excursion (goto-char (car ident-pos))
-                                         (current-column))))
+	      (goto-char (car ident-pos))
+              (let ((col (current-column)))
                 (save-excursion (insert "\n")
                                 (indent-to col))
                 (insert (haskell-fontify-as-mode ty 'haskell-mode)))))))
@@ -675,7 +644,7 @@ command from GHCi."
                (format ":!cd %s && %s | %s"
                        (haskell-session-cabal-dir
                         (haskell-process-session (car state)))
-                       "find . -name '*.hs' -or -name '*.lhs' -or -name '*.hsc' -print0"
+                       "find . -name '*.hs' -print0 -or -name '*.lhs' -print0 -or -name '*.hsc' -print0"
                        "xargs -0 hasktags -e -x"))))
       :complete (lambda (state response)
                   (when (cdr state)
