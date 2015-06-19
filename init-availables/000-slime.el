@@ -26,7 +26,9 @@
 
 ;;; Code:
 ;; 
-(setq inferior-lisp-program "/usr/bin/sbcl")
+(setq inferior-lisp-program (if windows-nt-p
+                                "C:/Program Files/Steel Bank Common Lisp/1.2.7/sbcl.exe"
+                              "/usr/bin/sbcl"))
 ;; 
 (setq slime-contribs '(slime-repl slime-fancy slime-banner))
 
