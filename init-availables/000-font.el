@@ -40,7 +40,7 @@
 (set-frame-font (apply #'font-candidate
                        (mapcar (lambda (font-name)
                                  (generate-font-string font-name 10))
-                               '("Ricty" "Migu 2M" "Migu 1M" "TakaoGothic" "IPAGothic" "MS Gothic"))))
+                               '("Ricty" "Migu 1M" "Migu 2M" "TakaoGothic" "IPAGothic" "MS Gothic"))))
 
 (provide '000-font)
 ;;; 000-font.el ends here

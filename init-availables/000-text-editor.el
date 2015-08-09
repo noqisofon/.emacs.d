@@ -3,6 +3,9 @@
 ;; 通常のインデントで半角スペースを使います。
 (setq-default indent-tabs-mode nil)
 
+;; タブ(もしくはインデントのサイズ)を 4 にします。
+(setq-default tab-width 4)
+
 ;; リージョンを kill-ring に入れないで削除できるようにします。
 (delete-selection-mode t)
 
@@ -12,10 +15,17 @@
 ;; オートセーブを有効にします。
 (auto-save-mode t)
 
+;; 表示行移動とかします。
 (setq line-move-visual t)
 
+;; 長い行でも折り返しを行いません。
+(setq-default truncate-lines t)
+
+;; バッファローカルな truncate-lines を持っていないバッファ向けの truncate-lines のデフォルト値です。
+(setq default-truncate-lines t)
+
 ;; 最下行での下移動を 15 行にします。
-(setq scroll-conservatively 15)
+(setq-default scroll-conservatively 15)
 
 ;; 対応するカッコを色表示します。
 ;;(when
