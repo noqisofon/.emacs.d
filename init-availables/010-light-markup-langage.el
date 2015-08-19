@@ -7,3 +7,4 @@
 (load "010-haml")
 (load "010-sass")
 (load "010-sgml")
+(load "010-yaml")
