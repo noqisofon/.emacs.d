@@ -1,8 +1,8 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
 
-;;; 040-lisp-common.el ---
+;;; 042-clojure.el ---
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2015  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,14 +25,9 @@
 ;; 
 
 ;;; Code:
-;; Lisp の括弧内のインデントです。
-(setq lisp-body-indent 2)
+(require-if-exists clojure-mode)
 
-(add-hook 'lisp-mode-hook (lambda ()
-                            (set (make-local-variable 'lisp-indent-function)
-                                 'common-lisp-indent-function)))
+(push '("\\.clj$" . clojure-mode) auto-mode-alist)
 
-(load "042-clojure")
-
-(provide '040-lisp-common)
-;;; 040-lisp-common.el ends here
+(provide '042-clojure)
+;;; 042-clojure.el ends here
