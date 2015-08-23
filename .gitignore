@@ -22,9 +22,10 @@
 # Ignore Directories
 # 
 auto-save-mode/
+eshell/
+private/
 tramp/
 server/
-private/
 
 # ============================================================
 # 
