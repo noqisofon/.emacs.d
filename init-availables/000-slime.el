@@ -25,18 +25,31 @@
 ;; 
 
 ;;; Code:
-;; 
-(setq inferior-lisp-program (if windows-nt-p
-                                "C:/Program Files/Steel Bank Common Lisp/1.2.7/sbcl.exe"
-                              "/usr/bin/sbcl"))
+;;
+
+(when windows-nt-p
+  (setq sbcl-version (getenv "SBCL_VERSION")))
+;; ;; 
+;; (setq sbcl-version 
+;;       (let ((output (shell-command-to-string "sbcl --version | awk '{ print $2; }'")))
+;;         ;; 何故か改行が入ってしまうため、substring している。
+;;         (substring output 0 6)))
+;; ;; )
+
+(setq sbcl-program (if windows-nt-p
+                       (format "C:/Program Files/Steel Bank Common Lisp/%s/sbcl.exe" sbcl-version)
+                     "/usr/bin/sbcl"))
+
+(setq inferior-lisp-program sbcl-program)
 ;; 
 (setq slime-contribs '(slime-repl slime-fancy slime-banner))
 
-(require-if-exists slime)
-(require-if-exists ac-slime)
+(require-if-exists slime
+                   (add-hook 'slime-mode-hook 'set-up-slime-ac))
 
-(add-hook 'slime-mode-hook 'set-up-slime-ac)
-(add-hook 'slime-repl-mode-hook 'set-up-slime-ac)
+(require-if-exists ac-slime
+                   (add-hook 'slime-repl-mode-hook 'set-up-slime-ac))
+
 
 (provide '000-slime)
 ;;; 000-slime.el ends here

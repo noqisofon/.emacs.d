@@ -44,4 +44,4 @@
 (setq-default indicate-empty-lines t)
 
 (load "002-color-theme")
-(load "002-linum")
+(load "002-line-number")

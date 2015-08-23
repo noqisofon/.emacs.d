@@ -7,3 +7,5 @@
 (push '("\\.markdown$" . markdown-mode) auto-mode-alist)
 
 (lazyload (markdown-mode) "markdown-mode")
+
+(provide '010-markdown)

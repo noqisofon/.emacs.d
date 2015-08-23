@@ -1,8 +1,8 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
-;;; 000-init.el --- 
+;;; 010-ascii-doc.el ---
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2015  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,17 +25,10 @@
 ;; 
 
 ;;; Code:
+(push '("\\.ascii" . asciidoc-mode) auto-mode-alist)
+(push '("\\.asciidoc" . asciidoc-mode) auto-mode-alist)
 
-(load "001-input-method")
-(load "001-key-bind")
-(load "001-recent")
-(load "001-session")
+(require-if-exists asciidoc-mode)
 
-(load "002-emmet")
-
-(load "010-light-markup-language")
-(load "020-version-control")
-
-(load "040-programing-language")
-
-;;; 000-init.el ends here
+(provide '010-ascii-doc)
+;;; 010-ascii-doc.el ends here

@@ -19,18 +19,18 @@
 
 (push '("\\.org$" . org-mode) auto-mode-alist)
 
-(require-if-exists
- org
+(require-if-exists org
+                   (set-face-foreground 'org-level-1 "#7fb000")
+                   (set-face-foreground 'org-level-2 "#7f9142")
+                   (set-face-foreground 'org-level-3 "#00379c")
+                   (set-face-foreground 'org-level-4 "#212ca4")
+                   (set-face-foreground 'org-level-5 "#6a40ad")
+                   (set-face-foreground 'org-level-6 "#8c3e13")
+                   
+                   (set-face-foreground 'org-document-title "midnight blue")
+                   
+                   (set-face-attribute 'org-document-title nil
+                                       :height 1.0
+                                       :weight 'bold))
 
- (set-face-foreground 'org-level-1 "#7fb000")
- (set-face-foreground 'org-level-2 "#7f9142")
- (set-face-foreground 'org-level-3 "#00379c")
- (set-face-foreground 'org-level-4 "#212ca4")
- (set-face-foreground 'org-level-5 "#6a40ad")
- (set-face-foreground 'org-level-6 "#8c3e13")
-
- (set-face-foreground 'org-document-title "midnight blue")
-
- (set-face-attribute 'org-document-title nil
-                     :height 1.0
-                     :weight 'bold))
+(provide '010-org-mode)

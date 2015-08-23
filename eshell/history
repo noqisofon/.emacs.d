@@ -1,0 +1,15 @@
+ls
+rm -v *.elc
+ls
+rm -v \#*#
+ls
+rm -v *~
+exit
+cd ~/Downloads/
+cd ~/Documents/
+ls
+mkdir -p ./noqisofon.hatenablog.com/2015/08/23
+ls
+exit
+ls
+exit

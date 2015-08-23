@@ -11,8 +11,8 @@
 ;; デフォルトで linum-mode を有効にします。
 (add-hook-lambda 'find-file-hook nil
                  (linum-mode 1))
-
-;; ;; 7 桁分の領域を確保して行番号を入れます。
-;; (setq linum-format "%7d")
+(when windows-nt-p
+  ;; 7 桁分の領域を確保して行番号を入れます。
+  (setq linum-format "%7d"))
 
 (global-linum-mode 1)
