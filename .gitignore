@@ -23,6 +23,7 @@
 # 
 auto-save-mode/
 eshell/
+elpa/
 private/
 tramp/
 server/

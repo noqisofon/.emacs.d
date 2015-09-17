@@ -25,7 +25,10 @@
 ;;; Code:
 (require-if-exists coffee-mode)
 
-
+(add-hook 'coffee-mode-hook
+          '(lambda ()
+             (setq tab-width 2
+                   coffee-tab-width 2)))
 
 (provide '040-coffee-script)
 ;;; 040-coffee-script.el ends here
