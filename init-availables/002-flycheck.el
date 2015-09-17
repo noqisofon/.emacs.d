@@ -1,8 +1,6 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
+;;; 002-flycheck.el ---                              -*- lexical-binding: t; -*-
 
-;;; 000-init.el --- 
-
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2015  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,18 +23,7 @@
 ;; 
 
 ;;; Code:
+(add-hook 'after-init-hook #'global-flycheck-mode)
 
-(load "001-input-method")
-(load "001-key-bind")
-(load "001-recent")
-(load "001-session")
-
-(load "002-emmet")
-(load "002-flycheck")
-
-(load "010-light-markup-language")
-(load "020-version-control")
-
-(load "040-programing-language")
-
-;;; 000-init.el ends here
+(provide '002-flycheck)
+;;; 002-flycheck.el ends here
