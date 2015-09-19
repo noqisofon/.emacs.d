@@ -23,7 +23,8 @@
 ;; 
 
 ;;; Code:
-(add-hook 'after-init-hook #'global-flycheck-mode)
+(when (fboundp 'global-flycheck-mode)
+  (add-hook 'after-init-hook #'global-flycheck-mode))
 
 (provide '002-flycheck)
 ;;; 002-flycheck.el ends here
