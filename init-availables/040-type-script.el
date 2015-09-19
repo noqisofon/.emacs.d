@@ -27,7 +27,8 @@
 
 (require-if-exists tss)
 
-(tss-config-default)
+(when (fboundp 'tss-config-default)
+  (tss-config-default))
 
 (provide '040-type-script)
 ;;; 040-type-script.el ends here
