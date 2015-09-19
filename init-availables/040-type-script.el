@@ -23,7 +23,9 @@
 ;; 
 
 ;;; Code:
-(push '("\\.ts$") auto-mode-alist)
+(require-if-exists typescript)
+
+(push '("\\.ts$" . typescript-mode) auto-mode-alist)
 
 (require-if-exists tss)
 
