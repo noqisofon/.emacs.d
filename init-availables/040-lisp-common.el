@@ -25,14 +25,15 @@
 ;; 
 
 ;;; Code:
-;; Lisp の括弧内のインデントです。
-(setq lisp-body-indent 2)
+;; ;; Lisp の括弧内のインデントです。
+;; (setq lisp-body-indent 2)
 
-(add-hook 'lisp-mode-hook (lambda ()
-                            (set (make-local-variable 'lisp-indent-function)
-                                 'common-lisp-indent-function)))
+;; (add-hook 'lisp-mode-hook (lambda ()
+;;                             (set (make-local-variable 'lisp-indent-function)
+;;                                  'common-lisp-indent-function)))
 
 (load "042-clojure")
+(load "042-scheme")
 
 (provide '040-lisp-common)
 ;;; 040-lisp-common.el ends here

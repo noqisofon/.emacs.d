@@ -42,4 +42,3 @@
 
 (load "000-environment")
 (load "000-init")
-;;; init.el ends here

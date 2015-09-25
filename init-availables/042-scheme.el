@@ -25,7 +25,10 @@
 ;; 
 
 ;;; Code:
-(setq quack-default-program "csi")
+(setq quack-default-program "gauche")
+
+;; ruby モード。
+(push '("\\.scm$" . scheme-mode) auto-mode-alist)
 
 (lazyload (scheme-mode) "scheme-mode")
 (lazyload (run-scheme) "run-scheme")
@@ -49,7 +52,6 @@
                               (setq lisp-body-indent 2)
                               (setq eldoc-documentation-function 'scheme-get-current-symbol-info)
                               (eldoc-mode)))
-
 
 (provide '042-scheme)
 ;;; 042-scheme.el ends here
