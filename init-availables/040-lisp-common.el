@@ -25,8 +25,8 @@
 ;; 
 
 ;;; Code:
-;; ;; Lisp の括弧内のインデントです。
-;; (setq lisp-body-indent 2)
+;; Lisp の括弧内のインデントです。
+(setq lisp-body-indent 2)
 
 ;; (add-hook 'lisp-mode-hook (lambda ()
 ;;                             (set (make-local-variable 'lisp-indent-function)

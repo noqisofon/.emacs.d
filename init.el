@@ -42,3 +42,18 @@
 
 (load "000-environment")
 (load "000-init")
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(cluck-fontify-style nil)
+ '(cluck-smart-open-paren-p t)
+ '(cluck-tabs-are-evil-p t)
+ '(quack-fontify-style (quote emacs)))
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ )

@@ -1,8 +1,6 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
+;;; 002-eldoc.el ---                                 -*- lexical-binding: t; -*-
 
-;;; 000-init.el --- 
-
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2015  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,19 +23,14 @@
 ;; 
 
 ;;; Code:
+(require-if-exists eldoc)
 
-(load "001-input-method")
-(load "001-key-bind")
-(load "001-recent")
-(load "001-session")
+(setq eldoc-idle-delay 0)
+(setq eldoc-echo-area-use-multiline-p t)
 
-(load "002-emmet")
-(load "002-flycheck")
-(load "002-eldoc")
+(add-hook 'emacs-lisp-mode-hook 'turn-on-eldoc-mode)
+(add-hook 'lisp-interaction-mode-hook 'turn-on-eldoc-mode)
+(add-hook 'ielm-mode-hook 'turn-on-eldoc-mode)
 
-(load "010-light-markup-language")
-(load "020-version-control")
-
-(load "040-programing-language")
-
-;;; 000-init.el ends here
+(provide '002-eldoc)
+;;; 002-eldoc.el ends here

@@ -25,33 +25,36 @@
 ;; 
 
 ;;; Code:
-(setq quack-default-program "gauche")
+(setq scheme-program-name "guile -s ")
 
 ;; ruby モード。
 (push '("\\.scm$" . scheme-mode) auto-mode-alist)
 
-(lazyload (scheme-mode) "scheme-mode")
+(lazyload (scheme-mode) "scheme")
 (lazyload (run-scheme) "run-scheme")
 (require-if-exists scheme-complete)
 
-(cond ((string= quack-default-program "csi")
+(cond ((string= scheme-program-name "csi")
        (load "043-chicken"))
 
-      ((string= quack-default-program "gosh")
+      ((string= scheme-program-name "gosh")
        (load "043-gauche"))
 
-      ((string= quack-default-program "gsi")
+      ((string= scheme-program-name "gsi")
        (load "043-gambit")))
 
-(when (not (string= quack-default-program "csi"))
-  (require-if-exists quack))
+;; といいたいところなんだけど、quack はなんだかおかしいのでコメントアウト。
+;; (when (not (string= scheme-program-name "csi"))
+;;   ;; csi じゃなかったら quack にします。
+;;   (require-if-exists quack))
 
 (add-hook 'scheme-mode-hook (lambda ()
-                              (make-local-variable 'eldoc-documentation-function)
-                              (setq lisp-indent-function 'scheme-smart-indent-function)
                               (setq lisp-body-indent 2)
-                              (setq eldoc-documentation-function 'scheme-get-current-symbol-info)
-                              (eldoc-mode)))
+                              (when (featurep 'scheme-complete)
+                                (make-local-variable 'eldoc-documentation-function)
+                                (setq lisp-indent-function 'scheme-smart-indent-function)
+                                (setq eldoc-documentation-function 'scheme-get-current-symbol-info)
+                                (eldoc-mode))))
 
 (provide '042-scheme)
 ;;; 042-scheme.el ends here
