@@ -1,4 +1,4 @@
-;;; haskell-compile.el --- Haskell/GHC compilation sub-mode
+;;; haskell-compile.el --- Haskell/GHC compilation sub-mode -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2013  Herbert Valerio Riedel
 
@@ -29,6 +29,7 @@
 (require 'compile)
 (require 'haskell-cabal)
 
+;;;###autoload
 (defgroup haskell-compile nil
   "Settings for Haskell compilation mode"
   :link '(custom-manual "(haskell-mode)compilation")
@@ -63,7 +64,7 @@ The `%s' placeholder is replaced by the current buffer's filename."
 
 (defconst haskell-compilation-error-regexp-alist
   `((,(concat
-       "^\\(?1:[^ \t\r\n]+?\\):"
+       "^ *\\(?1:[^ \t\r\n]+?\\):"
        "\\(?:"
        "\\(?2:[0-9]+\\):\\(?4:[0-9]+\\)\\(?:-\\(?5:[0-9]+\\)\\)?" ;; "121:1" & "12:3-5"
        "\\|"
@@ -92,7 +93,7 @@ This is a child of `compilation-mode-map'.")
   "Local `compilation-filter-hook' for `haskell-compilation-mode'."
 
   (when haskell-compile-ghc-filter-linker-messages
-    (delete-matching-lines "^Loading package [^ \t\r\n]+ [.]+ linking [.]+ done\\.$"
+    (delete-matching-lines "^ *Loading package [^ \t\r\n]+ [.]+ linking [.]+ done\\.$"
                            (if (boundp 'compilation-filter-start) ;; available since Emacs 24.2
                                (save-excursion (goto-char compilation-filter-start)
                                                (line-beginning-position))

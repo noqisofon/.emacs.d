@@ -1,4 +1,4 @@
-;;; haskell-debug.el --- Debugging mode via GHCi
+;;; haskell-debug.el --- Debugging mode via GHCi -*- lexical-binding: t -*-
 
 ;; Copyright (c) 2014 Chris Done. All rights reserved.
 
@@ -26,36 +26,43 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Configuration
 
+;;;###autoload
 (defgroup haskell-debug nil
   "Settings for debugging support."
   :link '(custom-manual "(haskell-mode)haskell-debug")
   :group 'haskell)
 
+;;;###autoload
 (defface haskell-debug-warning-face
   '((t :inherit 'compilation-warning))
   "Face for warnings."
   :group 'haskell-debug)
 
+;;;###autoload
 (defface haskell-debug-trace-number-face
   '((t :weight bold :background "#f5f5f5"))
   "Face for numbers in backtrace."
   :group 'haskell-debug)
 
+;;;###autoload
 (defface haskell-debug-newline-face
   '((t :weight bold :background "#f0f0f0"))
   "Face for newlines in trace steps."
   :group 'haskell-debug)
 
+;;;###autoload
 (defface haskell-debug-keybinding-face
   '((t :inherit 'font-lock-type-face :weight bold))
   "Face for keybindings."
   :group 'haskell-debug)
 
+;;;###autoload
 (defface haskell-debug-heading-face
   '((t :inherit 'font-lock-keyword-face))
   "Face for headings."
   :group 'haskell-debug)
 
+;;;###autoload
 (defface haskell-debug-muted-face
   '((t :foreground "#999"))
   "Face for muteds."
@@ -549,8 +556,7 @@ Stopped at /home/foo/project/src/x.hs:6:25-36
     (cl-loop for span in history
              do (let ((string (haskell-debug-get-span-string
                                (plist-get span :path)
-                               (plist-get span :span)))
-                      (index (plist-get span :index)))
+                               (plist-get span :span))))
                   (insert (propertize (format "%4d" i)
                                       'face 'haskell-debug-trace-number-face)
                           " "
@@ -707,9 +713,9 @@ variances in source span notation."
 For example:
 
 X                ( /home/foo/X.hs, interpreted )
-
+Main             ( /home/foo/X.hs, /home/foo/X.o )
 "
-  (if (string-match "^\\([^ ]+\\)[ ]+( \\([^ ]+?\\), [a-z]+ )$"
+  (if (string-match "\\([^ ]+\\)[ ]+( \\([^ ]+?\\), [/a-zA-Z0-9\.]+ )$"
                     string)
       (list :module (match-string 1 string)
             :path (match-string 2 string))

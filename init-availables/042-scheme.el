@@ -25,7 +25,7 @@
 ;; 
 
 ;;; Code:
-(setq scheme-program-name "guile -s ")
+(setq scheme-program-name "gsi")
 
 ;; ruby モード。
 (push '("\\.scm$" . scheme-mode) auto-mode-alist)

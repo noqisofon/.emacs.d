@@ -143,23 +143,28 @@ replace with STR as yanked string."
 ;; the commands `helm-mark-ring', `helm-global-mark-ring' or
 ;; `helm-all-mark-rings' instead.
 
-(defun helm-mark-ring-get-marks (pos)
+(defun helm-mark-ring-line-string-at-pos (pos)
+  "Return line string at position POS."
   (save-excursion
     (goto-char pos)
     (forward-line 0)
-    (let ((line  (car (split-string (thing-at-point 'line) "[\n\r]"))))
-      (when (string= "" line)
-        (setq line  "<EMPTY LINE>"))
-      (format "%7d: %s" (line-number-at-pos) line))))
+    (let ((line (car (split-string (thing-at-point 'line) "[\n\r]"))))
+      (if (string= "" line)
+          "<EMPTY LINE>"
+        line))))
 
 (defun helm-mark-ring-get-candidates ()
   (with-helm-current-buffer
     (cl-loop with marks = (if (mark t) (cons (mark-marker) mark-ring) mark-ring)
-          for i in marks
-          for m = (helm-mark-ring-get-marks i)
-          unless (and recip (member m recip))
-          collect m into recip
-          finally return recip)))
+             for i in marks
+             with max-line-number = (line-number-at-pos (point-max))
+             with width = (length (number-to-string max-line-number))
+             for m = (format (concat "%" (number-to-string width) "d: %s")
+                             (line-number-at-pos i)
+                             (helm-mark-ring-line-string-at-pos i))
+             unless (and recip (member m recip))
+             collect m into recip
+             finally return recip)))
 
 (defvar helm-source-mark-ring
   (helm-build-sync-source "mark-ring"
@@ -262,8 +267,15 @@ the `global-mark-ring' after each new visit."
   (helm-build-sync-source "Registers"
     :candidates #'helm-register-candidates
     :action-transformer #'helm-register-action-transformer
+    :persistent-help ""
     :multiline t
-    :action nil)
+    :action '(("Delete Register(s)" .
+               (lambda (_candidate)
+                 (cl-loop for candidate in (helm-marked-candidates)
+                          for register = (car candidate)
+                          do (setq register-alist
+                                (delq (assoc register register-alist)
+                                      register-alist)))))))
   "See (info \"(emacs)Registers\")")
 
 (defun helm-register-candidates ()
@@ -333,9 +345,10 @@ the `global-mark-ring' after each new visit."
         collect (cons (format "Register %3s:\n %s" key (car string-actions))
                       (cons char (cdr string-actions)))))
 
-(defun helm-register-action-transformer (_actions register-and-functions)
+(defun helm-register-action-transformer (actions register-and-functions)
   "Decide actions by the contents of register."
-  (cl-loop with func-actions =
+  (cl-loop with transformer-actions = nil
+           with func-actions =
         '((insert-register
            "Insert Register" .
            (lambda (c) (insert-register (car c))))
@@ -361,7 +374,8 @@ the `global-mark-ring' after each new visit."
         for func in (cdr register-and-functions)
         for cell = (assq func func-actions)
         when cell
-        collect (cdr cell)))
+        do (push (cdr cell) transformer-actions)
+        finally return (append (nreverse transformer-actions) actions)))
 
 ;;;###autoload
 (defun helm-mark-ring ()

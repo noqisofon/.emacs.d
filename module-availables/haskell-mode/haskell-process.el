@@ -1,4 +1,4 @@
-;;; haskell-process.el --- Communicating with the inferior Haskell process
+;;; haskell-process.el --- Communicating with the inferior Haskell process -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2011  Chris Done
 
@@ -98,13 +98,17 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                         haskell-process-args-cabal-repl
                         (let ((target (haskell-session-target session)))
                           (if target (list target) nil)))))))
-      ('cabal-ghci
-       (append (list (format "Starting inferior cabal-ghci process using %s ..."
-                             haskell-process-path-cabal-ghci)
+      ('stack-ghci
+       (append (list (format "Starting inferior stack GHCi process using %s" haskell-process-path-stack)
                      session-name
                      nil)
                (apply haskell-process-wrapper-function
-                      (list (list haskell-process-path-cabal-ghci))))))))
+                      (list
+                       (append
+                        (list haskell-process-path-stack "ghci")
+                        (let ((target (haskell-session-target session)))
+                          (if target (list target) nil))
+                        haskell-process-args-stack-ghci))))))))
 
 (defun haskell-process-make (name)
   "Make an inferior Haskell process."
@@ -147,11 +151,30 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
          (replace-regexp-in-string "\4" "" response))))))
 
 (defun haskell-process-log (msg)
-  "Write MSG to the process log (if enabled)."
+  "Effective append MSG to the process log (if enabled)."
   (when haskell-process-log
-    (with-current-buffer (get-buffer-create "*haskell-process-log*")
-      (goto-char (point-max))
-      (insert msg "\n"))))
+    (let* ((append-to (get-buffer-create "*haskell-process-log*"))
+           (windows (get-buffer-window-list append-to t t))
+           move-point-in-windows)
+      (with-current-buffer append-to
+        (setq buffer-read-only nil)
+        ;; record in which windows we should keep point at eob.
+        (dolist (window windows)
+          (when (= (window-point window) (point-max))
+            (push window move-point-in-windows)))
+        (let (return-to-position)
+          ;; decide whether we should reset point to return-to-position
+          ;; or leave it at eob.
+          (unless (= (point) (point-max))
+            (setq return-to-position (point))
+            (goto-char (point-max)))
+          (insert "\n" msg "\n")
+          (when return-to-position
+          (goto-char return-to-position)))
+        ;; advance to point-max in windows where it is needed
+        (dolist (window move-point-in-windows)
+          (set-window-point window (point-max)))
+        (setq buffer-read-only t)))))
 
 (defun haskell-process-project-by-proc (proc)
   "Find project by process."
@@ -160,7 +183,7 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                          (process-name proc)))
               haskell-sessions))
 
-(defun haskell-process-collect (session response process)
+(defun haskell-process-collect (_session response process)
   "Collect input for the response until receives a prompt."
   (haskell-process-set-response process
                                 (concat (haskell-process-response process) response))
@@ -263,16 +286,24 @@ This uses `accept-process-output' internally."
     (haskell-process-queue-flush process)
     (car-safe (haskell-command-state cmd))))
 
-(defun haskell-process-get-repl-completions (process inputstr)
-  "Perform `:complete repl ...' query for INPUTSTR using PROCESS."
-  (let* ((reqstr (concat ":complete repl "
+(defun haskell-process-get-repl-completions (process inputstr &optional limit)
+  "Perform `:complete repl ...' query for INPUTSTR using PROCESS.
+Give optional LIMIT arg to limit completion candidates count,
+zero, negative values, and nil means all possible completions.
+Returns NIL when no completions found."
+  (let* ((mlimit (if (and limit (> limit 0))
+                     (concat " " (number-to-string limit) " ")
+                   " "))
+         (reqstr (concat ":complete repl"
+                         mlimit
                          (haskell-string-literal-encode inputstr)))
          (rawstr (haskell-process-queue-sync-request process reqstr)))
+    ;; TODO use haskell-utils-parse-repl-response
     (if (string-prefix-p "unknown command " rawstr)
         (error "GHCi lacks `:complete' support (try installing 7.8 or ghci-ng)")
       (let* ((s1 (split-string rawstr "\r?\n" t))
              (cs (mapcar #'haskell-string-literal-decode (cdr s1)))
-             (h0 (car s1))) ;; "<cnt1> <cnt2> <quoted-str>"
+             (h0 (car s1))) ;; "<limit count> <all count> <unused string>"
         (unless (string-match "\\`\\([0-9]+\\) \\([0-9]+\\) \\(\".*\"\\)\\'" h0)
           (error "Invalid `:complete' response"))
         (let ((cnt1 (match-string 1 h0))

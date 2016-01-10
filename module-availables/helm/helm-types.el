@@ -41,7 +41,7 @@
   (helm-make-actions
     "Find file"                             'helm-find-many-files
     "Find file as root"                     'helm-find-file-as-root
-    "Find file other window"                'find-file-other-window
+    "Find file other window"                'helm-find-files-other-window
     "Find file other frame"                 'find-file-other-frame
     "Open dired in file's directory"        'helm-open-dired
     "Grep File(s) `C-u recurse'"            'helm-find-files-grep
@@ -236,7 +236,10 @@
     ("Describe Function" . (lambda (tm)
                              (describe-function (timer--function tm))))
     ("Find Function" . (lambda (tm)
-                         (find-function (timer--function tm)))))
+                         (helm-aif (timer--function tm)
+                             (if (byte-code-function-p it)
+                                 (message "Can't find anonymous function `%s'" it)
+                                 (find-function it))))))
   "Default actions for type timers."
   :group 'helm-elisp
   :type '(alist :key-type string :value-type function))

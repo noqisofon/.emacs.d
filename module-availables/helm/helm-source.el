@@ -520,7 +520,11 @@
     :custom symbol
     :documentation
     "  A local hook that run at beginning of initilization of this source.
-  i.e Before the creation of `helm-buffer'.")
+  i.e Before the creation of `helm-buffer'.
+
+  Should be a variable (defined with defvar).
+  Can be also an anonymous function or a list of functions
+  directly added to slot, this is not recommended though.")
 
    (after-init-hook
     :initarg :after-init-hook
@@ -528,7 +532,11 @@
     :custom symbol
     :documentation
     "  A local hook that run at end of initilization of this source.
-  i.e After the creation of `helm-buffer'."))
+  i.e After the creation of `helm-buffer'.
+
+  Should be a variable.
+  Can be also an anonymous function or a list of functions
+  directly added to slot, this is not recommended though."))
 
   "Main interface to define helm sources."
   :abstract t)
@@ -837,7 +845,16 @@ an eieio class."
    (concat "\\<helm-map>\\[helm-execute-persistent-action]: "
            (helm-aif (or (slot-value source 'persistent-action)
                          (slot-value source 'action))
-               (cond ((or (symbolp it) (functionp it))
+               (cond ((and (symbolp it)
+                           (functionp it)
+                           (eq it 'identity))
+                      "Do Nothing")
+                     ((and (symbolp it)
+                           (boundp it)
+                           (listp (symbol-value it))
+                           (stringp (caar (symbol-value it))))
+                      (caar (symbol-value it)))
+                     ((or (symbolp it) (functionp it))
                       (helm-symbol-name it))
                      ((listp it)
                       (let ((action (car it)))
@@ -858,10 +875,10 @@ an eieio class."
 (defmethod helm--setup-source :before ((source helm-source))
   (helm-aif (slot-value source 'keymap)
       (and (symbolp it) (set-slot-value source 'keymap (symbol-value it))))
-  (set-slot-value source 'header-line (helm-source--header-line source))
   (helm-aif (slot-value source 'persistent-help)
       (set-slot-value source 'header-line
-                      (helm-source--persistent-help-string it source)))
+                      (helm-source--persistent-help-string it source))
+    (set-slot-value source 'header-line (helm-source--header-line source)))
   (helm-aif (slot-value source 'candidate-number-limit)
       (and (symbolp it) (set-slot-value
                          source 'candidate-number-limit (symbol-value it))))

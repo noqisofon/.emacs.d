@@ -61,6 +61,11 @@ Any other non--nil value update after confirmation."
   :group 'helm-regexp
   :type '(alist :key-type string :value-type function))
 
+(defcustom helm-moccur-truncate-lines t
+  "When nil the (m)occur line that appears will not be truncated."
+  :group 'helm-regexp
+  :type 'boolean)
+
 
 (defface helm-moccur-buffer
     '((t (:foreground "DarkTurquoise" :underline t)))
@@ -162,10 +167,6 @@ i.e Don't replace inside a word, regexp is surrounded with \\bregexp\\b."
 (defun helm-regexp-kill-new (input)
   (kill-new input)
   (message "Killed: %s" input))
-
-(defun helm-quote-whitespace (candidate)
-  "Quote whitespace, if some, in string CANDIDATE."
-  (replace-regexp-in-string " " "\\\\ " candidate))
 
 
 ;;; Occur
@@ -406,7 +407,7 @@ Same as `helm-moccur-goto-line' but go in new frame."
         :history 'helm-occur-history
         :keymap helm-moccur-map
         :input input
-        :truncate-lines t))
+        :truncate-lines helm-moccur-truncate-lines))
 
 (defun helm-moccur-run-save-buffer ()
   "Run moccur save results action from `helm-moccur'."
@@ -576,7 +577,7 @@ Special commands:
         :preselect (and (memq 'helm-source-occur helm-sources-using-default-as-input)
                         (format "%s:%d:" (regexp-quote (buffer-name))
                                 (line-number-at-pos (point))))
-        :truncate-lines t))
+        :truncate-lines helm-moccur-truncate-lines))
 
 ;;;###autoload
 (defun helm-occur-from-isearch ()
@@ -598,26 +599,7 @@ Special commands:
           :buffer "*helm occur*"
           :history 'helm-occur-history
           :input input
-          :truncate-lines t)))
-
-;;;###autoload
-(defun helm-multi-occur (buffers)
-  "Preconfigured helm for multi occur.
-
-  BUFFERS is a list of buffers to search through.
-With a prefix arg, reverse the behavior of
-`helm-moccur-always-search-in-current'.
-The prefix arg can be set before calling `helm-multi-occur'
-or during the buffer selection."
-  (interactive (list (helm-comp-read
-                      "Buffers: " (helm-buffer-list)
-                      :marked-candidates t)))
-  (let ((helm-moccur-always-search-in-current
-         (if (or current-prefix-arg
-                 helm-current-prefix-arg)
-             (not helm-moccur-always-search-in-current)
-           helm-moccur-always-search-in-current)))
-    (helm-multi-occur-1 buffers)))
+          :truncate-lines helm-moccur-truncate-lines)))
 
 ;;;###autoload
 (defun helm-multi-occur-from-isearch (&optional _arg)

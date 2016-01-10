@@ -28,6 +28,7 @@
 (load "040-c-common")
 (load "040-lisp-common")
 
+(load "040-ceylon")
 (load "040-csharp")
 (load "040-coffee-script")
 (load "040-type-script")

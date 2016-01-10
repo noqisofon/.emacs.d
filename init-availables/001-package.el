@@ -1,8 +1,6 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
+;;; 001-package.el ---                               -*- lexical-binding: t; -*-
 
-;;; 043-gambit.el ---
-
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2015  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,14 +23,22 @@
 ;; 
 
 ;;; Code:
-(autoload 'gambit-inferior-mode "gambit" "Hook Gambit mode into cmuscheme.")
-(autoload 'gambit-mode "gambit" "Hook Gambit mode into scheme.")
-(add-hook 'inferior-scheme-mode-hook (function gambit-inferior-mode))
-(add-hook 'scheme-mode-hook (function gambit-mode))
-(setq scheme-program-name "gsi -:d-")
+(require-if-exists package)
 
-(require-if-exists gambit)
+;; MELPA を追加します。
+(add-to-list 'package-archives '("melpa"        . "http://melpa.org/packages/") t)
 
+;; MELPA-stable を追加します。
+(add-to-list 'package-archives '("melpa-stable" . "http://stable.melpa.org/packages/") t)
 
-(provide '043-gambit)
-;;; 043-gambit.el ends here
+;; Marmalade を追加します。
+(add-to-list 'package-archives  '("marmalade"   . "http://marmalade-repo.org/packages/") t)
+
+;; Org を追加します。
+(add-to-list 'package-archives '("org"          . "http://orgmode.org/elpa/") t)
+
+;; 初期化します。
+(package-initialize)
+
+(provide '001-package)
+;;; 001-package.el ends here

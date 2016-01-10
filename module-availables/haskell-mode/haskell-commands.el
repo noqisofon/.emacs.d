@@ -1,4 +1,10 @@
-;;; haskell-commands.el --- Commands that can be run on the process
+;;; haskell-commands.el --- Commands that can be run on the process -*- lexical-binding: t -*-
+
+;;; Commentary:
+
+;;; This module provides varoius `haskell-mode' and `haskell-interactive-mode'
+;;; specific commands such as show type signature, show info, haskell process
+;;; commands and etc.
 
 ;; Copyright (c) 2014 Chris Done. All rights reserved.
 
@@ -24,6 +30,8 @@
 (require 'haskell-font-lock)
 (require 'haskell-interactive-mode)
 (require 'haskell-session)
+(require 'haskell-presentation-mode)
+(require 'haskell-utils)
 (require 'highlight-uses-mode)
 
 ;;;###autoload
@@ -35,7 +43,8 @@
   (haskell-process-start (haskell-interactive-session)))
 
 (defun haskell-process-start (session)
-  "Start the inferior Haskell process."
+  "Start the inferior Haskell process with a given SESSION.
+You can create new session using function `haskell-session-make'."
   (let ((existing-process (get-process (haskell-session-name (haskell-interactive-session)))))
     (when (processp existing-process)
       (haskell-interactive-mode-echo session "Restarting process ...")
@@ -51,7 +60,7 @@
     (haskell-process-set (haskell-session-process session) 'is-restarting nil)
     (let ((default-directory (haskell-session-cabal-dir session))
           (log-and-command (haskell-process-compute-process-log-and-command session (haskell-process-type))))
-      (haskell-session-pwd session)
+      (haskell-session-prompt-set-current-dir session (not haskell-process-load-or-reload-prompt))
       (haskell-process-set-process
        process
        (progn
@@ -60,7 +69,8 @@
     (progn (set-process-sentinel (haskell-process-process process) 'haskell-process-sentinel)
            (set-process-filter (haskell-process-process process) 'haskell-process-filter))
     (haskell-process-send-startup process)
-    (unless (eq 'cabal-repl (haskell-process-type)) ;; "cabal repl" sets the proper CWD
+    (unless (or (eq 'cabal-repl (haskell-process-type))
+                   (eq 'stack-ghci (haskell-process-type))) ;; Both "cabal repl" and "stack ghci" set the proper CWD.
       (haskell-process-change-dir session
                                   process
                                   (haskell-session-current-dir session)))
@@ -71,16 +81,18 @@
     process))
 
 (defun haskell-process-send-startup (process)
-  "Send the necessary start messages."
+  "Send the necessary start messages to haskell PROCESS."
   (haskell-process-queue-command
    process
    (make-haskell-command
     :state process
 
     :go (lambda (process)
-          (haskell-process-send-string process ":set prompt \"\\4\"")
+          ;; We must set the prompt last, so that this command as a
+          ;; whole produces only one prompt marker as a response.
           (haskell-process-send-string process "Prelude.putStrLn \"\"")
-          (haskell-process-send-string process ":set -v1"))
+          (haskell-process-send-string process ":set -v1")
+          (haskell-process-send-string process ":set prompt \"\\4\""))
 
     :live (lambda (process buffer)
             (when (haskell-process-consume
@@ -130,37 +142,30 @@ If I break, you can:
   (interrupt-process (haskell-process-process (haskell-commands-process))))
 
 (defun haskell-process-reload-with-fbytecode (process module-buffer)
-  "Reload FILE-NAME with -fbyte-code set, and then restore -fobject-code."
+  "Query a PROCESS to reload MODULE-BUFFER with -fbyte-code set.
+Restores -fobject-code after reload finished.
+MODULE-BUFFER is the actual Emacs buffer of the module being loaded."
   (haskell-process-queue-without-filters process ":set -fbyte-code")
-  (haskell-process-touch-buffer process module-buffer)
-  (haskell-process-queue-without-filters process ":reload")
-  (haskell-process-queue-without-filters process ":set -fobject-code"))
-
-;;;###autoload
-(defun haskell-process-touch-buffer (process buffer)
-  "Updates mtime on the file for BUFFER by queing a touch on
-PROCESS."
-  (interactive)
-  (haskell-process-queue-command
+  ;; We prefix the module's filename with a "*", which asks ghci to
+  ;; ignore any existing object file and interpret the module.
+  ;; Dependencies will still use their object files as usual.
+  (haskell-process-queue-without-filters
    process
-   (make-haskell-command
-    :state (cons process buffer)
-    :go (lambda (state)
-          (haskell-process-send-string
-           (car state)
-           (format ":!%s %s"
-                   "touch"
-                   (shell-quote-argument (buffer-file-name
-                                          (cdr state))))))
-    :complete (lambda (state _)
-                (with-current-buffer (cdr state)
-                  (clear-visited-file-modtime))))))
+   (format ":load \"*%s\""
+           (replace-regexp-in-string
+            "\""
+            "\\\\\""
+            (buffer-file-name module-buffer))))
+  (haskell-process-queue-without-filters process ":set -fobject-code"))
 
 (defvar url-http-response-status)
 (defvar url-http-end-of-headers)
+(defvar haskell-cabal-targets-history nil
+  "History list for session targets.")
 
 (defun haskell-process-hayoo-ident (ident)
-  "Hayoo for IDENT, returns a list of modules asyncronously through CALLBACK."
+  ;; FIXME Obsolete doc string, CALLBACK is not used.
+  "Hayoo for IDENT, return a list of modules asyncronously through CALLBACK."
   ;; We need a real/simulated closure, because otherwise these
   ;; variables will be unbound when the url-retrieve callback is
   ;; called.
@@ -183,7 +188,7 @@ PROCESS."
         (warn "HTTP error %s fetching %s" url-http-response-status url)))))
 
 (defun haskell-process-hoogle-ident (ident)
-  "Hoogle for IDENT, returns a list of modules."
+  "Hoogle for IDENT, return a list of modules."
   (with-temp-buffer
     (let ((hoogle-error (call-process "hoogle" nil t nil "search" "--exact" ident)))
       (goto-char (point-min))
@@ -197,14 +202,22 @@ PROCESS."
                                     "\n"))))))
 
 (defun haskell-process-haskell-docs-ident (ident)
-  "Search with haskell-docs for IDENT, returns a list of modules."
-  (cl-remove-if-not (lambda (a) (string-match "^[A-Z][A-Za-b0-9_'.]+$" a))
-                    (split-string (shell-command-to-string (concat "haskell-docs --modules " ident))
-                                  "\n")))
+  "Search with haskell-docs for IDENT, return a list of modules."
+  (cl-remove-if-not
+   (lambda (a) (string-match "^[[:upper:]][[:alnum:]_'.]+$" a))
+   (split-string
+      (with-output-to-string
+        (with-current-buffer
+            standard-output
+          (call-process "haskell-docs"
+                        nil             ; no infile
+                        t               ; output to current buffer (that is string)
+                        nil             ; do not redisplay
+                        "--modules" ident)))
+      "\n")))
 
 (defun haskell-process-import-modules (process modules)
-  "Import `modules' with :m +, and send any import statements
-from `module-buffer'."
+  "Query PROCESS `:m +' command to import MODULES."
   (when haskell-process-auto-import-loaded-modules
     (haskell-process-queue-command
      process
@@ -217,14 +230,14 @@ from `module-buffer'."
 
 ;;;###autoload
 (defun haskell-describe (ident)
-  "Describe the given identifier."
+  "Describe the given identifier IDENT."
   (interactive (list (read-from-minibuffer "Describe identifier: "
                                            (haskell-ident-at-point))))
   (let ((results (read (shell-command-to-string
                         (concat "haskell-docs --sexp "
                                 ident)))))
     (help-setup-xref (list #'haskell-describe ident)
-		     (called-interactively-p 'interactive))
+                     (called-interactively-p 'interactive))
     (save-excursion
       (with-help-window (help-buffer)
         (with-current-buffer (help-buffer)
@@ -254,15 +267,16 @@ from `module-buffer'."
 
 ;;;###autoload
 (defun haskell-rgrep (&optional prompt)
-  "Grep the effective project for the symbol at point. Very
-useful for codebase navigation. Prompts for an arbitrary regexp
-given a prefix arg."
+  "Grep the effective project for the symbol at point.
+Very useful for codebase navigation.
+
+Prompts for an arbitrary regexp given a prefix arg PROMPT."
   (interactive "P")
   (let ((sym (if prompt
                  (read-from-minibuffer "Look for: ")
                (haskell-ident-at-point))))
     (rgrep sym
-           "*.hs" ;; TODO: common Haskell extensions.
+           "*.hs *.lhs *.hsc *.chs *.hs-boot *.lhs-boot"
            (haskell-session-current-dir (haskell-interactive-session)))))
 
 ;;;###autoload
@@ -270,27 +284,36 @@ given a prefix arg."
   "Print info on the identifier at point.
 If PROMPT-VALUE is non-nil, request identifier via mini-buffer."
   (interactive "P")
-  (haskell-process-do-simple-echo
-   (let ((ident (replace-regexp-in-string
-                 "^!\\([A-Z_a-z]\\)"
-                 "\\1"
-                 (if prompt-value
-                     (read-from-minibuffer "Info: " (haskell-ident-at-point))
-                   (haskell-ident-at-point))))
-         (modname (unless prompt-value
-                    (haskell-utils-parse-import-statement-at-point))))
-     (if modname
-         (format ":browse! %s" modname)
-       (format (if (string-match "^[a-zA-Z_]" ident)
-                   ":info %s"
-                 ":info (%s)")
-               (or ident
-                   (haskell-ident-at-point)))))
-   'haskell-mode))
+  (let ((at-point (haskell-ident-at-point)))
+    (when (or prompt-value at-point)
+      (let* ((ident (replace-regexp-in-string
+                     "^!\\([A-Z_a-z]\\)"
+                     "\\1"
+                     (if prompt-value
+                         (read-from-minibuffer "Info: " at-point)
+                       at-point)))
+             (modname (unless prompt-value
+                        (haskell-utils-parse-import-statement-at-point)))
+             (command (cond
+                       (modname
+                        (format ":browse! %s" modname))
+                       ((string= ident "") ; For the minibuffer input case
+                        nil)
+                       (t (format (if (string-match "^[a-zA-Z_]" ident)
+                                      ":info %s"
+                                    ":info (%s)")
+                                  (or ident
+                                      at-point))))))
+        (when command
+          (haskell-process-show-repl-response command))))))
 
 ;;;###autoload
 (defun haskell-process-do-type (&optional insert-value)
-  "Print the type of the given expression."
+  ;; FIXME insert value functionallity seems to be missing.
+  "Print the type of the given expression.
+
+Given INSERT-VALUE prefix indicates that result type signature
+should be inserted."
   (interactive "P")
   (if insert-value
       (haskell-process-insert-type)
@@ -304,19 +327,20 @@ If PROMPT-VALUE is non-nil, request identifier via mini-buffer."
       ;; No newlines in expressions, and surround with parens if it
       ;; might be a slice expression
       (when expr-okay
-        (haskell-process-do-simple-echo
+        (haskell-process-show-repl-response
          (format
           (if (or (string-match-p "\\`(" expr)
-                 (string-match-p "\\`[_[:alpha:]]" expr))
+                  (string-match-p "\\`[_[:alpha:]]" expr))
               ":type %s"
             ":type (%s)")
-          expr)
-         'haskell-mode)))))
+          expr))))))
 
 ;;;###autoload
-(defun haskell-mode-jump-to-def-or-tag (&optional next-p)
-  "Jump to the definition (by consulting GHCi), or (fallback)
-jump to the tag.
+(defun haskell-mode-jump-to-def-or-tag (&optional _next-p)
+  ;; FIXME NEXT-P arg is not used
+  "Jump to the definition.
+Jump to definition of identifier at point by consulting GHCi, or
+tag table as fallback.
 
 Remember: If GHCi is busy doing something, this will delay, but
 it will always be accurate, in contrast to tags, which always
@@ -331,24 +355,19 @@ position with `xref-pop-marker-stack'."
         (haskell-mode-handle-generic-loc loc)
       (call-interactively 'haskell-mode-tag-find))
     (unless (equal initial-loc (point-marker))
-      (save-excursion
-        (goto-char initial-loc)
-        (set-mark-command nil)
-        ;; Store position for return with `xref-pop-marker-stack'
-        (xref-push-marker-stack)))))
+      (xref-push-marker-stack initial-loc))))
 
 ;;;###autoload
 (defun haskell-mode-goto-loc ()
-  "Go to the location of the thing at point. Requires the :loc-at
-command from GHCi."
+  "Go to the location of the thing at point.
+Requires the :loc-at command from GHCi."
   (interactive)
   (let ((loc (haskell-mode-loc-at)))
     (when loc
       (haskell-mode-goto-span loc))))
 
 (defun haskell-mode-goto-span (span)
-  "Jump to the span, whatever file and line and column it needs
-to to get there."
+  "Jump to the SPAN, whatever file and line and column it needs to get there."
   (xref-push-marker-stack)
   (find-file (expand-file-name (plist-get span :path)
                                (haskell-session-cabal-dir (haskell-interactive-session))))
@@ -357,81 +376,85 @@ to to get there."
   (forward-char (plist-get span :start-col)))
 
 (defun haskell-process-insert-type ()
-  "Get the identifer at the point and insert its type, if
-possible, using GHCi's :type."
-  (let ((process (haskell-interactive-process))
-        (query (let ((ident (haskell-ident-at-point)))
-                 (format (if (string-match "^[_[:lower:][:upper:]]" ident)
-                             ":type %s"
-                           ":type (%s)")
-                         ident))))
-    (haskell-process-queue-command
-     process
-     (make-haskell-command
-      :state (list process query (current-buffer))
-      :go (lambda (state)
-            (haskell-process-send-string (nth 0 state)
-                                         (nth 1 state)))
-      :complete (lambda (state response)
-                  (cond
-                   ;; TODO: Generalize this into a function.
-                   ((or (string-match "^Top level" response)
-                        (string-match "^<interactive>" response))
-                    (message response))
-                   (t
-                    (with-current-buffer (nth 2 state)
-                      (goto-char (line-beginning-position))
-                      (insert (format "%s\n" (replace-regexp-in-string "\n$" "" response)))))))))))
+  "Get the identifer at the point and insert its type.
+Use GHCi's :type if it's possible."
+  (let ((ident (haskell-ident-at-point)))
+    (when ident
+      (let ((process (haskell-interactive-process))
+            (query (format (if (string-match "^[_[:lower:][:upper:]]" ident)
+                               ":type %s"
+                             ":type (%s)")
+                           ident)))
+        (haskell-process-queue-command
+         process
+         (make-haskell-command
+          :state (list process query (current-buffer))
+          :go (lambda (state)
+                (haskell-process-send-string (nth 0 state)
+                                             (nth 1 state)))
+          :complete (lambda (state response)
+                      (cond
+                       ;; TODO: Generalize this into a function.
+                       ((or (string-match "^Top level" response)
+                            (string-match "^<interactive>" response))
+                        (message response))
+                       (t
+                        (with-current-buffer (nth 2 state)
+                          (goto-char (line-beginning-position))
+                          (insert (format "%s\n" (replace-regexp-in-string "\n$" "" response)))))))))))))
 
 (defun haskell-mode-find-def (ident)
-  "Find definition location of identifier. Uses the GHCi process
-to find the location.
+  ;; TODO Check if it possible to exploit `haskell-process-do-info'
+  "Find definition location of identifier IDENT.
+Uses the GHCi process to find the location.  Returns nil if it
+can't find the identifier or the identifier isn't a string.
 
 Returns:
 
     (library <package> <module>)
     (file <path> <line> <col>)
     (module <name>)
-"
-  (let ((reply (haskell-process-queue-sync-request
-                (haskell-interactive-process)
-                (format (if (string-match "^[a-zA-Z_]" ident)
-                            ":info %s"
-                          ":info (%s)")
-                        ident))))
-    (let ((match (string-match "-- Defined \\(at\\|in\\) \\(.+\\)$" reply)))
-      (when match
-        (let ((defined (match-string 2 reply)))
-          (let ((match (string-match "\\(.+?\\):\\([0-9]+\\):\\([0-9]+\\)$" defined)))
-            (cond
-             (match
-              (list 'file
-                    (expand-file-name (match-string 1 defined)
-                                      (haskell-session-current-dir (haskell-interactive-session)))
-                    (string-to-number (match-string 2 defined))
-                    (string-to-number (match-string 3 defined))))
-             (t
-              (let ((match (string-match "`\\(.+?\\):\\(.+?\\)'$" defined)))
-                (if match
-                    (list 'library
-                          (match-string 1 defined)
-                          (match-string 2 defined))
-                  (let ((match (string-match "`\\(.+?\\)'$" defined)))
-                    (if match
-                        (list 'module
-                              (match-string 1 defined))))))))))))))
+    nil"
+  (when (stringp ident)
+    (let ((reply (haskell-process-queue-sync-request
+                  (haskell-interactive-process)
+                  (format (if (string-match "^[a-zA-Z_]" ident)
+                              ":info %s"
+                            ":info (%s)")
+                          ident))))
+      (let ((match (string-match "-- Defined \\(at\\|in\\) \\(.+\\)$" reply)))
+        (when match
+          (let ((defined (match-string 2 reply)))
+            (let ((match (string-match "\\(.+?\\):\\([0-9]+\\):\\([0-9]+\\)$" defined)))
+              (cond
+               (match
+                (list 'file
+                      (expand-file-name (match-string 1 defined)
+                                        (haskell-session-current-dir (haskell-interactive-session)))
+                      (string-to-number (match-string 2 defined))
+                      (string-to-number (match-string 3 defined))))
+               (t
+                (let ((match (string-match "`\\(.+?\\):\\(.+?\\)'$" defined)))
+                  (if match
+                      (list 'library
+                            (match-string 1 defined)
+                            (match-string 2 defined))
+                    (let ((match (string-match "`\\(.+?\\)'$" defined)))
+                      (if match
+                          (list 'module
+                                (match-string 1 defined)))))))))))))))
 
 ;;;###autoload
 (defun haskell-mode-jump-to-def (ident)
-  "Jump to definition of identifier at point."
+  "Jump to definition of identifier IDENT at point."
   (interactive (list (haskell-ident-at-point)))
   (let ((loc (haskell-mode-find-def ident)))
     (when loc
       (haskell-mode-handle-generic-loc loc))))
 
 (defun haskell-mode-handle-generic-loc (loc)
-  "Either jump to or display a generic location. Either a file or
-a library."
+  "Either jump to or echo a generic location LOC.
+Either a file or a library."
   (cl-case (car loc)
     (file (haskell-mode-jump-to-loc (cdr loc)))
     (library (message "Defined in `%s' (%s)."
@@ -441,8 +464,8 @@ a library."
                      (elt loc 1)))))
 
 (defun haskell-mode-loc-at ()
-  "Get the location at point. Requires the :loc-at command from
-GHCi."
+  "Get the location at point.
+Requires the :loc-at command from GHCi."
   (let ((pos (or (when (region-active-p)
                    (cons (region-beginning)
                          (region-end)))
@@ -477,42 +500,13 @@ GHCi."
           (error (propertize "No reply. Is :loc-at supported?"
                              'face 'compilation-error)))))))
 
-(defun haskell-mode-type-at ()
-  "Get the type of the thing at point. Requires the :type-at
-command from GHCi."
-  (let ((pos (or (when (region-active-p)
-                   (cons (region-beginning)
-                         (region-end)))
-                 (haskell-spanable-pos-at-point)
-                 (cons (point)
-                       (point)))))
-    (when pos
-      (replace-regexp-in-string
-       "\n$"
-       ""
-       (save-excursion
-         (haskell-process-queue-sync-request
-          (haskell-interactive-process)
-          (replace-regexp-in-string
-           "\n"
-           " "
-           (format ":type-at %s %d %d %d %d %s"
-                   (buffer-file-name)
-                   (progn (goto-char (car pos))
-                          (line-number-at-pos))
-                   (1+ (current-column))
-                   (progn (goto-char (cdr pos))
-                          (line-number-at-pos))
-                   (1+ (current-column))
-                   (buffer-substring-no-properties (car pos)
-                                                   (cdr pos))))))))))
-
 ;;;###autoload
-(defun haskell-process-cd (&optional not-interactive)
+(defun haskell-process-cd (&optional _not-interactive)
+  ;; FIXME optional arg is not used
   "Change directory."
   (interactive)
   (let* ((session (haskell-interactive-session))
-         (dir (haskell-session-pwd session t)))
+         (dir (haskell-session-prompt-set-current-dir session)))
     (haskell-process-log
      (propertize (format "Changing directory to %s ...\n" dir)
                  'face font-lock-comment-face))
@@ -520,23 +514,29 @@ command from GHCi."
                                 (haskell-interactive-process)
                                 dir)))
 
-(defun haskell-session-pwd (session &optional change)
-  "Prompt for the current directory."
-  (or (unless change
-        (haskell-session-get session 'current-dir))
-      (progn (haskell-session-set-current-dir
-              session
-              (haskell-utils-read-directory-name
-               (if change "Change directory: " "Set current directory: ")
-               (or (haskell-session-get session 'current-dir)
-                   (haskell-session-get session 'cabal-dir)
-                   (if (buffer-file-name)
-                       (file-name-directory (buffer-file-name))
-                     "~/"))))
-             (haskell-session-get session 'current-dir))))
+(defun haskell-session-buffer-default-dir (session &optional buffer)
+  "Try to deduce a sensible default directory for SESSION and BUFFER,
+of which the latter defaults to the current buffer."
+  (or (haskell-session-get session 'current-dir)
+      (haskell-session-get session 'cabal-dir)
+      (if (buffer-file-name buffer)
+	  (file-name-directory (buffer-file-name buffer))
+	  "~/")))
+
+(defun haskell-session-prompt-set-current-dir (session &optional use-default)
+  "Prompt for the current directory.
+Return current working directory for SESSION."
+  (let ((default (haskell-session-buffer-default-dir session)))
+    (haskell-session-set-current-dir
+     session
+     (if use-default
+	 default
+	 (haskell-utils-read-directory-name "Set current directory: " default))))
+  (haskell-session-get session 'current-dir))
 
 (defun haskell-process-change-dir (session process dir)
-  "Change the directory of the current process."
+  "Change SESSION's current directory.
+Query PROCESS to `:cd` to directory DIR."
   (haskell-process-queue-command
    process
    (make-haskell-command
@@ -561,7 +561,7 @@ command from GHCi."
                                          ":set -optP-include -optPdist/build/autogen/cabal_macros.h"))
 
 (defun haskell-process-do-try-info (sym)
-  "Get info of `sym' and echo in the minibuffer."
+  "Get info of SYM and echo in the minibuffer."
   (let ((process (haskell-interactive-process)))
     (haskell-process-queue-command
      process
@@ -573,13 +573,13 @@ command from GHCi."
              (if (string-match "^[A-Za-z_]" (cdr state))
                  (format ":info %s" (cdr state))
                (format ":info (%s)" (cdr state)))))
-      :complete (lambda (state response)
+      :complete (lambda (_state response)
                   (unless (or (string-match "^Top level" response)
                               (string-match "^<interactive>" response))
                     (haskell-mode-message-line response)))))))
 
 (defun haskell-process-do-try-type (sym)
-  "Get type of `sym' and echo in the minibuffer."
+  "Get type of SYM and echo in the minibuffer."
   (let ((process (haskell-interactive-process)))
     (haskell-process-queue-command
      process
@@ -591,41 +591,102 @@ command from GHCi."
              (if (string-match "^[A-Za-z_]" (cdr state))
                  (format ":type %s" (cdr state))
                (format ":type (%s)" (cdr state)))))
-      :complete (lambda (state response)
+      :complete (lambda (_state response)
                   (unless (or (string-match "^Top level" response)
                               (string-match "^<interactive>" response))
                     (haskell-mode-message-line response)))))))
 
 ;;;###autoload
 (defun haskell-mode-show-type-at (&optional insert-value)
-  "Show the type of the thing at point."
+  "Show type of the thing at point or within active region asynchronously.
+This function requires GHCi-ng and `:set +c` option enabled by
+default (please follow GHCi-ng README available at URL
+`https://github.com/chrisdone/ghci-ng').
+
+\\<haskell-interactive-mode-map>
+To make this function works sometimes you need to load the file in REPL
+first using command `haskell-process-load-file' bound to
+\\[haskell-process-load-file].
+
+Optional argument INSERT-VALUE indicates that
+recieved type signature should be inserted (but only if nothing
+happened since function invocation)."
   (interactive "P")
-  (let ((ty (haskell-mode-type-at))
-        (orig (point)))
-    (if insert-value
-        (let ((ident-pos (haskell-ident-pos-at-point)))
-          (cond
-           ((region-active-p)
-            (delete-region (region-beginning)
-                           (region-end))
-            (insert "(" ty ")")
-            (goto-char (1+ orig)))
-           ((= (line-beginning-position) (car ident-pos))
-            (goto-char (line-beginning-position))
-            (insert (haskell-fontify-as-mode ty 'haskell-mode)
-                    "\n"))
-           (t
-            (save-excursion
-	      (goto-char (car ident-pos))
-              (let ((col (current-column)))
-                (save-excursion (insert "\n")
-                                (indent-to col))
-                (insert (haskell-fontify-as-mode ty 'haskell-mode)))))))
-      (message "%s" (haskell-fontify-as-mode ty 'haskell-mode)))))
+  (let* ((pos (haskell-command-capture-expr-bounds))
+         (req (haskell-utils-compose-type-at-command pos))
+         (process (haskell-interactive-process))
+         (buf (current-buffer))
+         (pos-reg (cons pos (region-active-p))))
+    (haskell-process-queue-command
+     process
+     (make-haskell-command
+      :state (list process req buf insert-value pos-reg)
+      :go
+      (lambda (state)
+        (let* ((prc (car state))
+               (req (nth 1 state)))
+          (haskell-utils-async-watch-changes)
+          (haskell-process-send-string prc req)))
+      :complete
+      (lambda (state response)
+        (let* ((init-buffer (nth 2 state))
+               (insert-value (nth 3 state))
+               (pos-reg (nth 4 state))
+               (wrap (cdr pos-reg))
+               (min-pos (caar pos-reg))
+               (max-pos (cdar pos-reg))
+               (sig (haskell-utils-reduce-string response))
+               (res-type (haskell-utils-parse-repl-response sig)))
+
+          (cl-case res-type
+            ;; neither popup presentation buffer
+            ;; nor insert response in error case
+            ('unknown-command
+             (message
+              (concat
+               "This command requires GHCi-ng. "
+               "Please read command description for details.")))
+            ('option-missing
+             (message
+              (concat
+               "Could not infer type signature. "
+               "You need to load file first. "
+               "Also :set +c is required. "
+               "Please read command description for details.")))
+            ('interactive-error (message "Wrong REPL response: %s" sig))
+            (otherwise
+             (if insert-value
+                 ;; Only insert type signature and do not present it
+                 (if (= (length haskell-utils-async-post-command-flag) 1)
+                     (if wrap
+                         ;; Handle region case
+                         (progn
+                           (deactivate-mark)
+                           (save-excursion
+                             (delete-region min-pos max-pos)
+                             (goto-char min-pos)
+                             (insert (concat "(" sig ")"))))
+                       ;; Non-region cases
+                       (haskell-command-insert-type-signature sig))
+                   ;; Some commands registered, prevent insertion
+                   (let* ((rev (reverse haskell-utils-async-post-command-flag))
+                          (cs (format "%s" (cdr rev))))
+                     (message
+                      (concat
+                       "Type signature insertion was prevented. "
+                       "These commands were registered:"
+                       cs))))
+               ;; Present the result only when response is valid and not asked
+               ;; to insert result
+               (haskell-command-echo-or-present response)))
+
+            (haskell-utils-async-stop-watching-changes init-buffer))))))))
 
 ;;;###autoload
 (defun haskell-process-generate-tags (&optional and-then-find-this-tag)
-  "Regenerate the TAGS table."
+  "Regenerate the TAGS table.
+If optional AND-THEN-FIND-THIS-TAG argument is present it is used with
+function `xref-find-definitions' after new table was generated."
   (interactive)
   (let ((process (haskell-interactive-process)))
     (haskell-process-queue-command
@@ -636,28 +697,29 @@ command from GHCi."
             (if (eq system-type 'windows-nt)
                 (haskell-process-send-string
                  (car state)
-                 (format ":!powershell -Command \"& { cd %s ; hasktags -e -x (ls -fi *.hs *.lhs *.hsc -exclude \\\"#*#\\\" -name -r) ; exit }\""
-                         (haskell-session-cabal-dir
-                          (haskell-process-session (car state)))))
+                 (format ":!hasktags --output=\"%s\\TAGS\" -x -e \"%s\""
+                            (haskell-session-cabal-dir (haskell-process-session (car state)))
+                            (haskell-session-cabal-dir (haskell-process-session (car state)))))
               (haskell-process-send-string
                (car state)
                (format ":!cd %s && %s | %s"
                        (haskell-session-cabal-dir
                         (haskell-process-session (car state)))
-                       "find . -name '*.hs' -print0 -or -name '*.lhs' -print0 -or -name '*.hsc' -print0"
+                       "find . -type f \\( -name '*.hs' -or -name '*.lhs' -or -name '*.hsc' \\) -not \\( -name '#*' -or -name '.*' \\) -print0"
                        "xargs -0 hasktags -e -x"))))
-      :complete (lambda (state response)
+      :complete (lambda (state _response)
                   (when (cdr state)
                     (let ((tags-file-name
                            (haskell-session-tags-filename
                             (haskell-process-session (car state)))))
-                      (find-tag (cdr state))))
+                      (xref-find-definitions (cdr state))))
                   (haskell-mode-message-line "Tags generated."))))))
 
 (defun haskell-process-add-cabal-autogen ()
-  "Add <cabal-project-dir>/dist/build/autogen/ to the ghci search
-path. This allows modules such as 'Path_...', generated by cabal,
-to be loaded by ghci."
+  "Add cabal's autogen dir to the GHCi search path.
+Add <cabal-project-dir>/dist/build/autogen/ to GHCi seatch path.
+This allows modules such as 'Path_...', generated by cabal, to be
+loaded by GHCi."
   (unless (eq 'cabal-repl (haskell-process-type)) ;; redundant with "cabal repl"
     (let*
         ((session       (haskell-interactive-session))
@@ -669,8 +731,9 @@ to be loaded by ghci."
 
 ;;;###autoload
 (defun haskell-process-unignore ()
-  "Unignore any files that were specified as being ignored by the
-  inferior GHCi process."
+  "Unignore any ignored files.
+Do not ignore files that were specified as being ignored by the
+inferior GHCi process."
   (interactive)
   (let ((session (haskell-interactive-session))
         (changed nil))
@@ -695,8 +758,11 @@ to be loaded by ghci."
 
 ;;;###autoload
 (defun haskell-session-change-target (target)
-  "Set the build target for cabal repl"
-  (interactive "sNew build target:")
+  "Set the build TARGET for cabal REPL."
+  (interactive
+   (list
+     (completing-read "New build target: " (haskell-cabal-enum-targets)
+		      nil nil nil 'haskell-cabal-targets-history)))
   (let* ((session haskell-session)
          (old-target (haskell-session-get session 'target)))
     (when session
@@ -717,17 +783,17 @@ to be loaded by ghci."
     (goto-char (+ column (point)))))
 
 (defun haskell-mode-buffer-apply-command (cmd)
-  "Execute shell command CMD with current buffer as input and
-replace the whole buffer with the output. If CMD fails the buffer
-remains unchanged."
+  "Execute shell command CMD with current buffer as input and output.
+Use buffer as input and replace the whole buffer with the
+output.  If CMD fails the buffer remains unchanged."
   (set-buffer-modified-p t)
   (let* ((chomp (lambda (str)
                   (while (string-match "\\`\n+\\|^\\s-+\\|\\s-+$\\|\n+\\'" str)
                     (setq str (replace-match "" t t str)))
                   str))
-         (errout (lambda (fmt &rest args)
-                   (let* ((warning-fill-prefix "    "))
-                     (display-warning cmd (apply 'format fmt args) :warning))))
+         (_errout (lambda (fmt &rest args)
+		    (let* ((warning-fill-prefix "    "))
+		      (display-warning cmd (apply 'format fmt args) :warning))))
          (filename (buffer-file-name (current-buffer)))
          (cmd-prefix (replace-regexp-in-string " .*" "" cmd))
          (tmp-file (make-temp-file cmd-prefix))
@@ -736,9 +802,9 @@ remains unchanged."
                                      haskell-session)
                                 (haskell-session-cabal-dir haskell-session)
                               default-directory))
-         (errcode (with-temp-file tmp-file
-                    (call-process cmd filename
-                                  (list (current-buffer) err-file) nil)))
+         (_errcode (with-temp-file tmp-file
+		     (call-process cmd filename
+				   (list (current-buffer) err-file) nil)))
          (stderr-output
           (with-temp-buffer
             (insert-file-contents err-file)
@@ -749,21 +815,23 @@ remains unchanged."
             (buffer-substring-no-properties (point-min) (point-max)))))
     (if (string= "" stderr-output)
         (if (string= "" stdout-output)
-            (funcall errout
-                     "Error: %s produced no output, leaving buffer alone" cmd)
+            (message "Error: %s produced no output, leaving buffer alone" cmd)
           (save-restriction
             (widen)
             ;; command successful, insert file with replacement to preserve
             ;; markers.
             (insert-file-contents tmp-file nil nil nil t)))
-      ;; non-null stderr, command must have failed
-      (funcall errout "%s failed: %s" cmd stderr-output))
+      (progn
+        ;; non-null stderr, command must have failed
+        (message "Error: %s ended with errors, leaving buffer alone" cmd)
+        ;; use (warning-minimum-level :debug) to see this
+        (display-warning cmd stderr-output :debug)))
     (delete-file tmp-file)
     (delete-file err-file)))
 
 ;;;###autoload
 (defun haskell-mode-find-uses ()
-  "Find uses of the identifier at point, highlight them all."
+  "Find use cases of the identifier at point and highlight them all."
   (interactive)
   (let ((spans (haskell-mode-uses-at)))
     (unless (null spans)
@@ -772,7 +840,7 @@ remains unchanged."
                do (haskell-mode-make-use-highlight span)))))
 
 (defun haskell-mode-make-use-highlight (span)
-  "Make a highlight overlay at the given span."
+  "Make a highlight overlay at the given SPAN."
   (save-window-excursion
     (save-excursion
       (haskell-mode-goto-span span)
@@ -790,8 +858,8 @@ remains unchanged."
            (point)))))))
 
 (defun haskell-mode-uses-at ()
-  "Get the locations of uses for the ident at point. Requires
-the :uses command from GHCi."
+  "Get the locations of use cases for the ident at point.
+Requires the :uses command from GHCi."
   (let ((pos (or (when (region-active-p)
                    (cons (region-beginning)
                          (region-end)))
@@ -831,4 +899,44 @@ the :uses command from GHCi."
           (error (propertize "No reply. Is :uses supported?"
                              'face 'compilation-error)))))))
 
+(defun haskell-command-echo-or-present (msg)
+  "Present message in some manner depending on configuration.
+If variable `haskell-process-use-presentation-mode' is NIL it will output
+modified message MSG to echo area."
+  (if haskell-process-use-presentation-mode
+      (let ((session (haskell-process-session (haskell-interactive-process))))
+        (haskell-presentation-present session msg))
+    (let ((m (haskell-utils-reduce-string msg)))
+      (message m))))
+
+(defun haskell-command-capture-expr-bounds ()
+  "Capture position bounds of expression at point.
+If there is an active region then it returns region
+bounds.  Otherwise it uses `haskell-spanable-pos-at-point` to
+capture identifier bounds.  If latter function returns NIL this function
+will return cons cell where min and max positions both are equal
+to point."
+  (or (when (region-active-p)
+        (cons (region-beginning)
+              (region-end)))
+      (haskell-spanable-pos-at-point)
+      (cons (point) (point))))
+
+(defun haskell-command-insert-type-signature (signature)
+  "Insert type signature.
+In case of active region is present, wrap it by parentheses and
+append SIGNATURE to original expression.  Otherwise tries to
+carefully insert SIGNATURE above identifier at point.  Removes
+newlines and extra whitespace in signature before insertion."
+  (let* ((ident-pos (or (haskell-ident-pos-at-point)
+                        (cons (point) (point))))
+         (min-pos (car ident-pos))
+         (sig (haskell-utils-reduce-string signature)))
+    (save-excursion
+      (goto-char min-pos)
+      (let ((col (current-column)))
+        (insert sig "\n")
+        (indent-to col)))))
+
 (provide 'haskell-commands)
+;;; haskell-commands.el ends here

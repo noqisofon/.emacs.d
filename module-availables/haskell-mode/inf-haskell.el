@@ -1,4 +1,4 @@
-;;; inf-haskell.el --- Interaction with an inferior Haskell process
+;;; inf-haskell.el --- Interaction with an inferior Haskell process -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009  Free Software Foundation, Inc.
 
@@ -42,6 +42,7 @@
 ;; Dynamically scoped variables.
 (defvar find-tag-marker-ring)
 
+;;;###autoload
 (defgroup inferior-haskell nil
   "Settings for REPL interaction via `inferior-haskell-mode'"
   :link '(custom-manual "(haskell-mode)inferior-haskell-mode")
@@ -227,7 +228,7 @@ setting up the inferior-haskell buffer."
 (defvar inferior-haskell-seen-prompt nil)
 (make-variable-buffer-local 'inferior-haskell-seen-prompt)
 
-(defun inferior-haskell-spot-prompt (string)
+(defun inferior-haskell-spot-prompt (_string)
   (let ((proc (get-buffer-process (current-buffer))))
     (when proc
       (save-excursion
@@ -490,7 +491,7 @@ in the buffer.  This can be done interactively with the \\[universal-argument] p
 The returned info is cached for reuse by `haskell-doc-mode'."
   (interactive
    (let ((sym (haskell-ident-at-point)))
-     (list (read-string (if (> (length sym) 0)
+     (list (read-string (if sym
                             (format "Show type of (default %s): " sym)
                           "Show type of: ")
                         nil nil sym)
@@ -526,7 +527,7 @@ The returned info is cached for reuse by `haskell-doc-mode'."
   "Query the haskell process for the kind of the given expression."
   (interactive
    (let ((type (haskell-ident-at-point)))
-     (list (read-string (if (> (length type) 0)
+     (list (read-string (if type
                             (format "Show kind of (default %s): " type)
                           "Show kind of: ")
                         nil nil type))))
@@ -539,7 +540,7 @@ The returned info is cached for reuse by `haskell-doc-mode'."
   "Query the haskell process for the info of the given expression."
   (interactive
    (let ((sym (haskell-ident-at-point)))
-     (list (read-string (if (> (length sym) 0)
+     (list (read-string (if sym
                             (format "Show info of (default %s): " sym)
                           "Show info of: ")
                         nil nil sym))))
@@ -552,7 +553,7 @@ The returned info is cached for reuse by `haskell-doc-mode'."
   "Attempt to locate and jump to the definition of the given expression."
   (interactive
    (let ((sym (haskell-ident-at-point)))
-     (list (read-string (if (> (length sym) 0)
+     (list (read-string (if sym
                             (format "Find definition of (default %s): " sym)
                           "Find definition of: ")
                         nil nil sym))))
@@ -679,7 +680,6 @@ Insert the output into the current buffer."
       (message "Generating module alist... done")
       module-alist)))
 
-
 (defcustom inferior-haskell-module-alist-file
   ;; (expand-file-name "~/.inf-haskell-module-alist")
   (expand-file-name (concat "inf-haskell-module-alist-"
@@ -771,14 +771,14 @@ see if this is newer than `haskell-package-conf-file' every time
 we load it."
   (interactive
    (let ((sym (haskell-ident-at-point)))
-     (list (read-string (if (> (length sym) 0)
+     (list (read-string (if sym
                             (format "Find documentation of (default %s): " sym)
                           "Find documentation of: ")
                         nil nil sym))))
   (let* (;; Find the module and look it up in the alist
          (module (inferior-haskell-get-module sym))
          (full-name (inferior-haskell-map-internal-ghc-ident (concat module "." sym)))
-         (success (string-match "\\(.*\\)\\.\\(.*\\)" full-name))
+         (_success (string-match "\\(.*\\)\\.\\(.*\\)" full-name))
          (module (match-string 1 full-name))
          (sym (match-string 2 full-name))
          (alist-record (assoc module (inferior-haskell-module-alist)))

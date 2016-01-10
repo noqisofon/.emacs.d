@@ -65,7 +65,8 @@ If you prefer scrolling line by line, set this value to 1."
 (defvar helm-current-buffer nil
   "Current buffer when `helm' is invoked.")
 (defvar helm-suspend-update-flag nil)
-
+(defvar helm-action-buffer "*helm action*"
+  "Buffer showing actions.")
 
 ;;; Macros helper.
 ;;
@@ -253,13 +254,17 @@ Default is `eq'."
         finally return
         (cl-loop for i being the hash-values in cont collect i)))
 
-(defun helm-skip-entries (seq regexp-list)
+(defun helm-skip-entries (seq black-regexp-list &optional white-regexp-list)
   "Remove entries which matches one of REGEXP-LIST from SEQ."
   (cl-loop for i in seq
-        unless (cl-loop for regexp in regexp-list
-                     thereis (and (stringp i)
-                                  (string-match regexp i)))
-        collect i))
+           unless (and (cl-loop for re in black-regexp-list
+                                thereis (and (stringp i)
+                                             (string-match-p re i)))
+                       (null
+                        (cl-loop for re in white-regexp-list
+                                thereis (and (stringp i)
+                                             (string-match-p re i)))))
+           collect i))
 
 (defun helm-shadow-entries (seq regexp-list)
   "Put shadow property on entries in SEQ matching a regexp in REGEXP-LIST."
@@ -363,6 +368,11 @@ Add spaces at end if needed to reach WIDTH when STR is shorter than WIDTH."
 
 (defun helm-region-active-p ()
   (and transient-mark-mode mark-active (/= (mark) (point))))
+
+(defun helm-quote-whitespace (candidate)
+  "Quote whitespace, if some, in string CANDIDATE."
+  (replace-regexp-in-string " " "\\\\ " candidate))
+
 
 ;;; Symbols routines
 ;;
@@ -387,6 +397,11 @@ Add spaces at end if needed to reach WIDTH when STR is shorter than WIDTH."
   (describe-variable (helm-symbolify var))
   (message nil))
 
+(defun helm-describe-face (face)
+  "VAR is symbol or string."
+  (describe-face (helm-symbolify face))
+  (message nil))
+
 (defun helm-find-function (func)
   "FUNC is symbol or string."
   (find-function (helm-symbolify func)))
@@ -395,6 +410,10 @@ Add spaces at end if needed to reach WIDTH when STR is shorter than WIDTH."
   "VAR is symbol or string."
   (find-variable (helm-symbolify var)))
 
+(defun helm-find-face-definition (face)
+  "FACE is symbol or string."
+  (find-face-definition (helm-symbolify face)))
+
 (defun helm-kill-new (candidate &optional replace)
   "CANDIDATE is symbol or string.
 See `kill-new' for argument REPLACE."
@@ -402,9 +421,17 @@ See `kill-new' for argument REPLACE."
 
 ;;; Files routines
 ;;
+(defun helm-file-name-sans-extension (filename)
+  "Same as `file-name-sans-extension' but remove all extensions."
+  (helm-aif (file-name-sans-extension filename)
+      (if (string-match "\\." it)
+          (helm-file-name-sans-extension it)
+          it)))
+
 (defun helm-basename (fname &optional ext)
   "Print FNAME  with any  leading directory  components removed.
-If specified, also remove filename extension EXT."
+If specified, also remove filename extension EXT.
+Arg EXT can be specified as a string with or without dot."
   (let ((non-essential t))
     (if (and ext (or (string= (file-name-extension fname) ext)
                      (string= (file-name-extension fname t) ext))
@@ -548,14 +575,32 @@ That is what completion commands operate on."
                                   (current-buffer)))
      ,@body))
 
+(defun helm-buffer-get ()
+  "Return `helm-action-buffer' if shown otherwise `helm-buffer'."
+  (if (helm-action-window)
+      helm-action-buffer
+    helm-buffer))
+
+(defun helm-window ()
+  "Window of `helm-buffer'."
+  (get-buffer-window (helm-buffer-get) 0))
+
+(defun helm-action-window ()
+  "Window of `helm-action-buffer'."
+  (get-buffer-window helm-action-buffer 'visible))
+
+(defmacro with-helm-window (&rest body)
+  "Be sure BODY is excuted in the helm window."
+  (declare (indent 0) (debug t))
+  `(with-selected-window (helm-window)
+     ,@body))
+
 
 ;; Yank text at point.
 ;;
 ;;
 (defun helm-yank-text-at-point ()
-  "Yank text at point in `helm-current-buffer' into minibuffer.
-If `helm-yank-symbol-first' is non--nil the first yank
-grabs the entire symbol."
+  "Yank text at point in `helm-current-buffer' into minibuffer."
   (interactive)
   (with-helm-current-buffer
     (let ((fwd-fn (or helm-yank-text-at-point-function #'forward-word)))
@@ -607,11 +652,11 @@ as emacs-25 version of `ansi-color-apply' is partially broken."
         (put-text-property
          start end 'font-lock-face (ansi-color--find-face codes) string))
       (setq colorized-substring (substring string start end)
-	    start (match-end 0))
+            start (match-end 0))
       ;; Eliminate unrecognized ANSI sequences.
       (while (string-match helm--ansi-color-drop-regexp colorized-substring)
-	(setq colorized-substring
-	      (replace-match "" nil nil colorized-substring)))
+        (setq colorized-substring
+              (replace-match "" nil nil colorized-substring)))
       (push colorized-substring result)
       ;; Create new face, by applying escape sequence parameters.
       (setq codes (ansi-color-apply-sequence escape-sequence codes)))
@@ -623,7 +668,7 @@ as emacs-25 version of `ansi-color-apply' is partially broken."
     ;; Save the remainder of the string to the result.
     (if (string-match "\033" string start)
         (push (substring string start (match-beginning 0)) result)
-	(push (substring string start) result))
+        (push (substring string start) result))
     (apply 'concat (nreverse result))))
 
 (provide 'helm-lib)

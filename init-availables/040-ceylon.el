@@ -1,8 +1,6 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
+;;; 040-ceylon.el ---                                -*- lexical-binding: t; -*-
 
-;;; 043-gambit.el ---
-
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2015  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,14 +23,9 @@
 ;; 
 
 ;;; Code:
-(autoload 'gambit-inferior-mode "gambit" "Hook Gambit mode into cmuscheme.")
-(autoload 'gambit-mode "gambit" "Hook Gambit mode into scheme.")
-(add-hook 'inferior-scheme-mode-hook (function gambit-inferior-mode))
-(add-hook 'scheme-mode-hook (function gambit-mode))
-(setq scheme-program-name "gsi -:d-")
+(lazyload (ceylon-mode) "ceylon-mode")
 
-(require-if-exists gambit)
+(push '("\\.ceylon$" . ceylon-mode) auto-mode-alist)
 
-
-(provide '043-gambit)
-;;; 043-gambit.el ends here
+(provide '040-ceylon)
+;;; 040-ceylon.el ends here

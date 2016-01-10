@@ -45,6 +45,13 @@ filtered from the list of candidates if the
   :type  '(repeat (choice regexp))
   :group 'helm-buffers)
 
+(defcustom helm-white-buffer-regexp-list nil
+  "The regexp list of not boring buffers.
+These buffers will be displayed even if they match one of
+`helm-boring-buffer-regexp-list'."
+  :type '(repeat (choice regexp))
+  :group 'helm-buffers)
+
 (defcustom helm-buffers-favorite-modes '(lisp-interaction-mode
                                          emacs-lisp-mode
                                          text-mode
@@ -186,7 +193,7 @@ Only buffer names are fuzzy matched when this is enabled,
   (let ((result (cl-loop for b in helm-buffers-list-cache
                          maximize (length b) into len-buf
                          maximize (length (with-current-buffer b
-                                            (symbol-name major-mode)))
+                                            (format-mode-line mode-name)))
                          into len-mode
                          finally return (cons len-buf len-mode))))
     (unless (default-value 'helm-buffer-max-length)
@@ -444,6 +451,7 @@ Should be called after others transformers i.e (boring buffers)."
                 (helm-make-visible-mark)))
             (forward-line 1) (end-of-line))))
       (helm-mark-current-line)
+      (helm-display-mode-line (helm-get-current-source) t)
       (message "%s candidates marked" (length helm-marked-candidates)))))
 
 (defun helm-buffers-mark-similar-buffers ()
@@ -640,12 +648,12 @@ If REGEXP-FLAG is given use `query-replace-regexp'."
     (helm-execute-persistent-action 'kill-action)))
 
 (defun helm-kill-marked-buffers (_ignore)
-  (let ((bufs (helm-marked-candidates)))
-    (mapc 'kill-buffer bufs)
+  (let* ((bufs (helm-marked-candidates))
+         (killed-bufs (cl-count-if 'kill-buffer bufs)))
     (with-helm-buffer
       (setq helm-marked-candidates nil
             helm-visible-mark-overlays nil))
-    (message "Killed %s buffers" (length bufs))))
+    (message "Killed %s buffer(s)" killed-bufs)))
 
 (defun helm-buffer-run-kill-buffers ()
   "Run kill buffer action from `helm-source-buffers-list'."
@@ -714,12 +722,7 @@ If REGEXP-FLAG is given use `query-replace-regexp'."
         (message "Can't kill `helm-current-buffer' without quitting session")
         (sit-for 1))
       (with-current-buffer (get-buffer buffer)
-        (if (and (buffer-modified-p)
-                 (buffer-file-name (current-buffer)))
-            (progn
-              (save-buffer)
-              (kill-buffer buffer))
-            (kill-buffer buffer)))
+        (kill-buffer buffer))
       (helm-delete-current-selection)
       (with-helm-temp-hook 'helm-after-persistent-action-hook
         (helm-force-update (regexp-quote (helm-get-selection nil t))))))
@@ -752,9 +755,11 @@ If REGEXP-FLAG is given use `query-replace-regexp'."
                           (helm-get-selection))))))
 
 (defun helm-buffers-list-persistent-action (candidate)
-  (if current-prefix-arg
-      (helm-buffers-persistent-kill candidate)
-    (switch-to-buffer candidate)))
+  (let ((current (window-buffer helm-persistent-action-display-window)))
+    (if (or (eql current (get-buffer helm-current-buffer))
+            (not (eql current (get-buffer candidate))))
+        (switch-to-buffer candidate)
+        (switch-to-buffer helm-current-buffer))))
 
 (defun helm-ediff-marked-buffers (_candidate &optional merge)
   "Ediff 2 marked buffers or CANDIDATE and `helm-current-buffer'.
@@ -823,42 +828,15 @@ Can be used by any source that list buffers."
 ;;
 ;;
 (defun helm-skip-boring-buffers (buffers _source)
-  (helm-skip-entries buffers helm-boring-buffer-regexp-list))
+  (helm-skip-entries buffers
+                     helm-boring-buffer-regexp-list
+                     helm-white-buffer-regexp-list))
 
 (defun helm-shadow-boring-buffers (buffers _source)
   "Buffers matching `helm-boring-buffer-regexp' will be
 displayed with the `file-name-shadow' face if available."
   (helm-shadow-entries buffers helm-boring-buffer-regexp-list))
 
-
-(define-helm-type-attribute 'buffer
-  `((action
-     . ,(helm-make-actions
-         "Switch to buffer" 'switch-to-buffer
-         (lambda () (and (locate-library "popwin") "Switch to buffer in popup window"))
-         'popwin:popup-buffer
-         "Switch to buffer other window `C-c o'" 'switch-to-buffer-other-window
-         "Switch to buffer other frame `C-c C-o'" 'switch-to-buffer-other-frame
-         (lambda () (and (locate-library "elscreen") "Display buffer in Elscreen"))
-         'helm-find-buffer-on-elscreen
-         "Query replace regexp `C-M-%'" 'helm-buffer-query-replace-regexp
-         "Query replace `M-%'" 'helm-buffer-query-replace
-         "View buffer" 'view-buffer
-         "Display buffer" 'display-buffer
-         "Grep buffers `M-g s' (C-u grep all buffers)" 'helm-zgrep-buffers
-         "Multi occur buffer(s) `C-s'" 'helm-multi-occur-as-action
-         "Revert buffer(s) `M-U'" 'helm-revert-marked-buffers
-         "Insert buffer" 'insert-buffer
-         "Kill buffer(s) `M-D'" 'helm-kill-marked-buffers
-         "Diff with file" 'diff-buffer-with-file
-         "Ediff Marked buffers `C-c ='" 'helm-ediff-marked-buffers
-         "Ediff Merge marked buffers `M-='" (lambda (candidate)
-                                              (helm-ediff-marked-buffers candidate t))))
-    (persistent-help . "Show this buffer")
-    (filtered-candidate-transformer helm-skip-boring-buffers
-                                    helm-buffers-sort-transformer
-                                    helm-highlight-buffers))
-  "Buffer or buffer name.")
 
 ;;;###autoload
 (defun helm-buffers-list ()

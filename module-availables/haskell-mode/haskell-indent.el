@@ -1,4 +1,4 @@
-;;; haskell-indent.el --- "semi-intelligent" indentation module for Haskell Mode
+;;; haskell-indent.el --- "semi-intelligent" indentation module for Haskell Mode -*- lexical-binding: t -*-
 
 ;; Copyright 2004, 2005, 2007, 2008, 2009  Free Software Foundation, Inc.
 ;; Copyright 1997-1998  Guy Lapalme
@@ -92,6 +92,7 @@
 
 (defvar haskell-literate)
 
+;;;###autoload
 (defgroup haskell-indent nil
   "Haskell indentation."
   :group 'haskell
@@ -322,7 +323,6 @@ It deals with both Bird style and non Bird-style scripts."
         (insert "\\begin{code}\n")))))
 
 ;;; Start of indentation code
-
 (defcustom haskell-indent-look-past-empty-line t
   "If nil, indentation engine will not look past an empty line for layout points."
   :group 'haskell-indent
@@ -436,7 +436,7 @@ Returns the location of the start of the comment, nil otherwise."
 
 (defun haskell-indent-next-symbol-safe (end)
   "Puts point to the next following symbol, or to end if there are no more symbols in the sexp."
-  (condition-case errlist (haskell-indent-next-symbol end)
+  (condition-case _errlist (haskell-indent-next-symbol end)
     (error (goto-char end))))
 
 (defun haskell-indent-separate-valdef (start end)
@@ -1295,7 +1295,7 @@ We stay in the cycle as long as the TAB key is pressed."
         (if marker
             (goto-char (marker-position marker)))))))
 
-(defun haskell-indent-region (start end)
+(defun haskell-indent-region (_start _end)
   (error "Auto-reindentation of a region is not supported"))
 
 ;;; alignment functions
@@ -1433,7 +1433,7 @@ TYPE is either 'guard or 'rhs."
             (if regstack
                 (haskell-indent-shift-columns maxcol regstack)))))))
 
-(defun haskell-indent-align-guards-and-rhs (start end)
+(defun haskell-indent-align-guards-and-rhs (_start _end)
   "Align the guards and rhs of functions in the region, which must be active."
   ;; The `start' and `end' args are dummys right now: they're just there so
   ;; we can use the "r" interactive spec which properly signals an error.
@@ -1513,6 +1513,10 @@ One indentation cycle is used."
 ;;;###autoload
 (defun turn-on-haskell-indent ()
   "Turn on ``intelligent'' Haskell indentation mode."
+  (when (and (bound-and-true-p haskell-indentation-mode)
+             (fboundp 'haskell-indentation-mode))
+    (haskell-indentation-mode 0))
+
   (set (make-local-variable 'indent-line-function) 'haskell-indent-cycle)
   (set (make-local-variable 'indent-region-function) 'haskell-indent-region)
   (setq haskell-indent-mode t)
@@ -1538,6 +1542,7 @@ One indentation cycle is used."
 (defun turn-off-haskell-indent ()
   "Turn off ``intelligent'' Haskell indentation mode."
   (kill-local-variable 'indent-line-function)
+  (kill-local-variable 'indent-region-function)
   ;; Remove haskell-indent-map from the local map.
   (let ((map (current-local-map)))
     (while map

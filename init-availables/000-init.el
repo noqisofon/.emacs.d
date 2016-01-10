@@ -28,6 +28,7 @@
 
 (load "001-input-method")
 (load "001-key-bind")
+(load "001-package")
 (load "001-recent")
 (load "001-session")
 

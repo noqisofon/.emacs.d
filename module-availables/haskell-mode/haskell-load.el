@@ -1,4 +1,4 @@
-;;; haskell-load.el --- Compiling and loading modules in the GHCi process
+;;; haskell-load.el --- Compiling and loading modules in the GHCi process -*- lexical-binding: t -*-
 
 ;; Copyright (c) 2014 Chris Done. All rights reserved.
 
@@ -85,40 +85,29 @@ actual Emacs buffer of the module being loaded."
   (when (get-buffer (format "*%s:splices*" (haskell-session-name session)))
     (with-current-buffer (haskell-interactive-mode-splices-buffer session)
       (erase-buffer)))
-  (cond ((haskell-process-consume process "Ok, modules loaded: \\(.+\\)\\.$")
-         (let* ((modules (haskell-process-extract-modules buffer))
-                (cursor (haskell-process-response-cursor process)))
-           (haskell-process-set-response-cursor process 0)
-           (let ((warning-count 0))
-             (while (haskell-process-errors-warnings session process buffer)
-               (setq warning-count (1+ warning-count)))
-             (haskell-process-set-response-cursor process cursor)
-             (if (and (not reload)
-                      haskell-process-reload-with-fbytecode)
-                 (haskell-process-reload-with-fbytecode process module-buffer)
-               (haskell-process-import-modules process (car modules)))
-             (haskell-mode-message-line
-              (if reload "Reloaded OK." "OK."))
-             (when cont
-               (condition-case e
-                   (funcall cont t)
-                 (error (message "%S" e))
-                 (quit nil))))))
-        ((haskell-process-consume process "Failed, modules loaded: \\(.+\\)\\.$")
-         (let* ((modules (haskell-process-extract-modules buffer))
-                (cursor (haskell-process-response-cursor process)))
-           (haskell-process-set-response-cursor process 0)
-           (while (haskell-process-errors-warnings session process buffer))
-           (haskell-process-set-response-cursor process cursor)
-           (if (and (not reload) haskell-process-reload-with-fbytecode)
-               (haskell-process-reload-with-fbytecode process module-buffer)
-             (haskell-process-import-modules process (car modules)))
-           (haskell-interactive-mode-compile-error session "Compilation failed.")
-           (when cont
-             (condition-case e
-                 (funcall cont nil)
-               (error (message "%S" e))
-               (quit nil)))))))
+  (let* ((ok (cond ((haskell-process-consume process "Ok, modules loaded: \\(.+\\)\\.$")       t)
+		   ((haskell-process-consume process "Failed, modules loaded: \\(.+\\)\\.$") nil)
+		   (t (error (message "Unexpected response from haskell process.")))))
+	 (modules (haskell-process-extract-modules buffer))
+	 (cursor (haskell-process-response-cursor process))
+	 (warning-count 0))
+    (haskell-process-set-response-cursor process 0)
+    (haskell-check-remove-overlays module-buffer)
+    (while (haskell-process-errors-warnings module-buffer session process buffer)
+      (setq warning-count (1+ warning-count)))
+    (haskell-process-set-response-cursor process cursor)
+    (if (and (not reload)
+	     haskell-process-reload-with-fbytecode)
+	(haskell-process-reload-with-fbytecode process module-buffer)
+	(haskell-process-import-modules process (car modules)))
+    (if ok
+	(haskell-mode-message-line (if reload "Reloaded OK." "OK."))
+	(haskell-interactive-mode-compile-error session "Compilation failed."))
+    (when cont
+      (condition-case e
+	  (funcall cont ok)
+	(error (message "%S" e))
+	(quit nil)))))
 
 (defun haskell-process-suggest-imports (session file modules ident)
   "Given a list of MODULES, suggest adding them to the import section."
@@ -150,6 +139,7 @@ actual Emacs buffer of the module being loaded."
                     (not (string-match "\\([A-Z][A-Za-z]+\\) is deprecated" msg)))
                (string-match "Use \\([A-Z][A-Za-z]+\\) to permit this" msg)
                (string-match "Use \\([A-Z][A-Za-z]+\\) to allow" msg)
+               (string-match "Use \\([A-Z][A-Za-z]+\\) if you want to disable this" msg)
                (string-match "use \\([A-Z][A-Za-z]+\\)" msg)
                (string-match "You need \\([A-Z][A-Za-z]+\\)" msg)))
          (when haskell-process-suggest-language-pragmas
@@ -182,7 +172,7 @@ actual Emacs buffer of the module being loaded."
            (when haskell-process-suggest-hayoo-imports
              (let ((modules (haskell-process-hayoo-ident ident)))
                (haskell-process-suggest-imports session file modules ident)))))
-        ((string-match "^[ ]+It is a member of the hidden package [‘`‛]\\(.+\\)['’].$" msg)
+        ((string-match "^[ ]+It is a member of the hidden package [‘`‛]\\([^@\r\n]+\\).*['’].$" msg)
          (when haskell-process-suggest-add-package
            (haskell-process-suggest-add-package session msg)))))
 
@@ -212,7 +202,8 @@ actual Emacs buffer of the module being loaded."
                              (cl-ecase (haskell-process-type)
                                ('ghci haskell-process-path-cabal)
                                ('cabal-repl haskell-process-path-cabal)
-                               ('cabal-ghci haskell-process-path-cabal))
+                               ('cabal-ghci haskell-process-path-cabal)
+                               ('stack-ghci haskell-process-path-stack))
                              (cl-caddr state)))))
 
           :live
@@ -232,8 +223,9 @@ actual Emacs buffer of the module being loaded."
                    (session (haskell-process-session process))
                    (message-count 0)
                    (cursor (haskell-process-response-cursor process)))
+	      ;; XXX: what the hell about the rampant code duplication?
               (haskell-process-set-response-cursor process 0)
-              (while (haskell-process-errors-warnings session process response)
+              (while (haskell-process-errors-warnings nil session process response)
                 (setq message-count (1+ message-count)))
               (haskell-process-set-response-cursor process cursor)
               (let ((msg (format "Complete: cabal %s (%s compiler messages)"
@@ -254,7 +246,8 @@ actual Emacs buffer of the module being loaded."
                    :app-name (cl-ecase (haskell-process-type)
                                ('ghci haskell-process-path-cabal)
                                ('cabal-repl haskell-process-path-cabal)
-                               ('cabal-ghci haskell-process-path-cabal))
+                               ('cabal-ghci haskell-process-path-cabal)
+                               ('stack-ghci haskell-process-path-stack))
                    :app-icon haskell-process-logo)))))))))))
 
 (defun haskell-process-echo-load-message (process buffer echo-in-repl th)
@@ -276,71 +269,204 @@ actual Emacs buffer of the module being loaded."
          (modules (split-string modules-string ", ")))
     (cons modules modules-string)))
 
-(defun haskell-process-errors-warnings (session process buffer &optional return-only)
-  "Trigger handling type errors or warnings. Either prints the
+;;;###autoload
+(defface haskell-error-face
+  '((((supports :underline (:style wave)))
+     :underline (:style wave :color "#dc322f"))
+    (t
+     :inherit error))
+  "Face used for marking error lines."
+  :group 'haskell-mode)
+
+;;;###autoload
+(defface haskell-warning-face
+  '((((supports :underline (:style wave)))
+     :underline (:style wave :color "#b58900"))
+    (t
+     :inherit warning))
+  "Face used for marking warning lines."
+  :group 'haskell-mode)
+
+;;;###autoload
+(defface haskell-hole-face
+  '((((supports :underline (:style wave)))
+     :underline (:style wave :color "#6c71c4"))
+    (t
+     :inherit warning))
+  "Face used for marking hole lines."
+  :group 'haskell-mode)
+
+(defvar haskell-check-error-fringe   (propertize "!" 'display '(left-fringe exclamation-mark)))
+(defvar haskell-check-warning-fringe (propertize "?" 'display '(left-fringe question-mark)))
+(defvar haskell-check-hole-fringe    (propertize "_" 'display '(left-fringe horizontal-bar)))
+
+(defun haskell-check-overlay-p (ovl)
+  (overlay-get ovl 'haskell-check))
+
+(defun haskell-check-filter-overlays (xs)
+  (cl-remove-if-not 'haskell-check-overlay-p xs))
+
+(defun haskell-check-remove-overlays (buffer)
+  (with-current-buffer buffer
+    (remove-overlays (point-min) (point-max) 'haskell-check t)))
+
+(defmacro with-overlay-properties (proplist ovl &rest body)
+  "Evaluate BODY with names in PROPLIST bound to the values of
+correspondingly-named overlay properties of OVL."
+  (let ((ovlvar (cl-gensym "OVL-")))
+    `(let* ((,ovlvar ,ovl)
+	    ,@(mapcar (lambda (p) `(,p (overlay-get ,ovlvar ',p))) proplist))
+       ,@body)))
+
+(defun overlay-start> (o1 o2)
+  (> (overlay-start o1) (overlay-start o2)))
+(defun overlay-start< (o1 o2)
+  (< (overlay-start o1) (overlay-start o2)))
+
+(defun first-overlay-in-if (test beg end)
+  (let ((ovls (cl-remove-if-not test (overlays-in beg end))))
+    (cl-first (sort (cl-copy-list ovls) 'overlay-start<))))
+
+(defun last-overlay-in-if (test beg end)
+  (let ((ovls (cl-remove-if-not test (overlays-in beg end))))
+    (cl-first (sort (cl-copy-list ovls) 'overlay-start>))))
+
+(defun haskell-error-overlay-briefly (ovl)
+  (with-overlay-properties (haskell-msg haskell-msg-type) ovl
+    (cond ((not (eq haskell-msg-type 'warning))
+	   haskell-msg)
+	  ((string-prefix-p "Warning:\n    " haskell-msg)
+	   (cl-subseq haskell-msg 13))
+	  (t (error "Invariant failed: a warning message from GHC has unexpected form: %s." haskell-msg)))))
+
+(defun haskell-goto-error-overlay (ovl)
+  (cond (ovl
+	 (goto-char (overlay-start ovl))
+	 (haskell-mode-message-line (haskell-error-overlay-briefly ovl)))
+	(t
+	 (message "No further notes from Haskell compiler."))))
+
+(defun haskell-goto-prev-error ()
+  (interactive)
+  (haskell-goto-error-overlay
+   (let ((ovl-at (cl-first (haskell-check-filter-overlays (overlays-at (point))))))
+     (or (last-overlay-in-if 'haskell-check-overlay-p
+			     (point-min) (if ovl-at (overlay-start ovl-at) (point)))
+	 ovl-at))))
+
+(defun haskell-goto-next-error ()
+  (interactive)
+  (haskell-goto-error-overlay
+   (let ((ovl-at (cl-first (haskell-check-filter-overlays (overlays-at (point))))))
+     (or (first-overlay-in-if 'haskell-check-overlay-p
+			      (if ovl-at (overlay-end ovl-at) (point)) (point-max))
+	 ovl-at))))
+
+(defun haskell-check-paint-overlay (buffer error-from-this-file-p line msg file type hole coln)
+  (with-current-buffer buffer
+    (let (beg end)
+      (goto-char (point-min))
+      ;; XXX: we can avoid excess buffer walking by relying on the maybe-fact that
+      ;;      GHC sorts error messages by line number, maybe.
+      (cond
+	(error-from-this-file-p
+	 (forward-line (1- line))
+	 (forward-char (1- coln))
+	 (setq beg (point))
+	 (if (eq type 'hole)
+	     (forward-char (length hole))
+	     (skip-chars-forward "^[:space:]" (line-end-position)))
+	 (setq end (point)))
+	(t
+	 (setq beg (point))
+	 (forward-line)
+	 (setq end (point))))
+      (let ((ovl (make-overlay beg end)))
+	(overlay-put ovl 'haskell-check t)
+	(overlay-put ovl 'haskell-file file)
+	(overlay-put ovl 'haskell-msg msg)
+	(overlay-put ovl 'haskell-msg-type type)
+	(overlay-put ovl 'help-echo msg)
+	(overlay-put ovl 'haskell-hole hole)
+	(cl-destructuring-bind (face fringe) (cl-case type
+					       (warning (list 'haskell-warning-face haskell-check-warning-fringe))
+					       (hole    (list 'haskell-hole-face    haskell-check-hole-fringe))
+					       (error   (list 'haskell-error-face   haskell-check-error-fringe)))
+	  (overlay-put ovl 'before-string fringe)
+	  (overlay-put ovl 'face face))))))
+
+(defun haskell-process-errors-warnings (module-buffer session process buffer &optional return-only)
+  "Trigger handling type errors or warnings.  Either prints the
 messages in the interactive buffer or if CONT is specified,
-passes the error onto that."
-  (cond
-   ((haskell-process-consume
-     process
-     "\\(Module imports form a cycle:[ \n]+module [^ ]+ ([^)]+)[[:unibyte:][:nonascii:]]+?\\)\nFailed")
-    (let ((err (match-string 1 buffer)))
-      (if (string-match "module [`'‘‛]\\([^ ]+\\)['’`] (\\([^)]+\\))" err)
-          (let* ((default-directory (haskell-session-current-dir session))
-                 (module (match-string 1 err))
-                 (file (match-string 2 err))
-                 (relative-file-name (file-relative-name file)))
-            (unless return-only
-              (haskell-interactive-show-load-message
-               session
-               'import-cycle
-               module
-               relative-file-name
-               nil
-               nil)
-              (haskell-interactive-mode-compile-error
-               session
-               (format "%s:1:0: %s"
-                       relative-file-name
-                       err)))
-            (list :file file :line 1 :col 0 :msg err :type 'error))
-        t)))
-   ((haskell-process-consume
-     process
-     (concat "[\r\n]\\([A-Z]?:?[^ \r\n:][^:\n\r]+\\):\\([0-9()-:]+\\):"
-             "[ \n\r]+\\([[:unibyte:][:nonascii:]]+?\\)\n[^ ]"))
-    (haskell-process-set-response-cursor process
-                                         (- (haskell-process-response-cursor process) 1))
-    (let* ((buffer (haskell-process-response process))
-           (file (match-string 1 buffer))
-           (location (match-string 2 buffer))
-           (error-msg (match-string 3 buffer))
-           (warning (string-match "^Warning:" error-msg))
-           (splice (string-match "^Splicing " error-msg))
-           (final-msg (format "%s:%s: %s"
-                              (haskell-session-strip-dir session file)
-                              location
-                              error-msg)))
-      (if return-only
-          (let* ((location (haskell-process-parse-error (concat file ":" location ": x")))
-                 (file (plist-get location :file))
-                 (line (plist-get location :line))
-                 (col1 (plist-get location :col)))
-            (list :file file :line line :col col1 :msg error-msg :type (if warning 'warning 'error)))
-        (progn (funcall (cond (warning
-                               'haskell-interactive-mode-compile-warning)
-                              (splice
-                               'haskell-interactive-mode-compile-splice)
-                              (t 'haskell-interactive-mode-compile-error))
-                        session final-msg)
-               (unless warning
-                 (haskell-mode-message-line final-msg))
-               (haskell-process-trigger-suggestions
-                session
-                error-msg
-                file
-                (plist-get (haskell-process-parse-error final-msg) :line))
-               t))))))
+passes the error onto that.
+
+When MODULE-BUFFER is non-NIL, paint error overlays."
+  (save-excursion
+    (cond
+      ((haskell-process-consume
+	process
+	"\\(Module imports form a cycle:[ \n]+module [^ ]+ ([^)]+)[[:unibyte:][:nonascii:]]+?\\)\nFailed")
+       (let ((err (match-string 1 buffer)))
+	 (if (string-match "module [`'‘‛]\\([^ ]+\\)['’`] (\\([^)]+\\))" err)
+	     (let* ((default-directory (haskell-session-current-dir session))
+		    (module (match-string 1 err))
+		    (file (match-string 2 err))
+		    (relative-file-name (file-relative-name file)))
+	       (unless return-only
+		 (haskell-interactive-show-load-message
+		  session
+		  'import-cycle
+		  module
+		  relative-file-name
+		  nil
+		  nil)
+		 (haskell-interactive-mode-compile-error
+		  session
+		  (format "%s:1:0: %s"
+			  relative-file-name
+			  err)))
+	       (list :file file :line 1 :col 0 :msg err :type 'error))
+	     t)))
+      ((haskell-process-consume
+	process
+	(concat "[\r\n]\\([A-Z]?:?[^ \r\n:][^:\n\r]+\\):\\([0-9()-:]+\\):"
+		"[ \n\r]+\\([[:unibyte:][:nonascii:]]+?\\)\n[^ ]"))
+       (haskell-process-set-response-cursor process
+					    (- (haskell-process-response-cursor process) 1))
+       (let* ((buffer (haskell-process-response process))
+	      (file (match-string 1 buffer))
+	      (location-raw (match-string 2 buffer))
+	      (error-msg (match-string 3 buffer))
+	      (type (cond ((string-match "^Warning:" error-msg)  'warning)
+			  ((string-match "^Splicing " error-msg) 'splice)
+			  (t                                     'error)))
+	      (critical (not (eq type 'warning)))
+	      ;; XXX: extract hole information, pass down to `haskell-check-paint-overlay'
+	      (final-msg (format "%s:%s: %s"
+				 (haskell-session-strip-dir session file)
+				 location-raw
+				 error-msg))
+	      (location (haskell-process-parse-error (concat file ":" location-raw ": x")))
+	      (line (plist-get location :line))
+	      (col1 (plist-get location :col)))
+	 (when module-buffer
+	   (haskell-check-paint-overlay module-buffer (string= (file-truename (buffer-file-name module-buffer)) (file-truename file))
+					line error-msg file type nil col1))
+	 (if return-only
+	     (list :file file :line line :col col1 :msg error-msg :type type)
+	     (progn (funcall (cl-case type
+			       (warning  'haskell-interactive-mode-compile-warning)
+			       (splice   'haskell-interactive-mode-compile-splice)
+			       (error    'haskell-interactive-mode-compile-error))
+			     session final-msg)
+		    (when critical
+		      (haskell-mode-message-line final-msg))
+		    (haskell-process-trigger-suggestions
+		     session
+		     error-msg
+		     file
+		     (plist-get (haskell-process-parse-error final-msg) :line))
+		    t)))))))
 
 (defun haskell-interactive-show-load-message (session type module-name file-name echo th)
   "Show the '(Compiling|Loading) X' message."
