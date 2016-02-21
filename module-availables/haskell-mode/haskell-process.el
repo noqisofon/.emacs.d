@@ -85,7 +85,8 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                      nil)
                (apply haskell-process-wrapper-function
                       (list
-                       (cons haskell-process-path-ghci haskell-process-args-ghci)))))
+                       (append (haskell-process-path-to-list haskell-process-path-ghci)
+			       haskell-process-args-ghci)))))
       ('cabal-repl
        (append (list (format "Starting inferior `cabal repl' process using %s ..."
                              haskell-process-path-cabal)
@@ -94,7 +95,8 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                (apply haskell-process-wrapper-function
                       (list
                        (append
-                        (list haskell-process-path-cabal "repl")
+			(haskell-process-path-to-list haskell-process-path-cabal)
+                        (list "repl")
                         haskell-process-args-cabal-repl
                         (let ((target (haskell-session-target session)))
                           (if target (list target) nil)))))))
@@ -105,10 +107,17 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                (apply haskell-process-wrapper-function
                       (list
                        (append
-                        (list haskell-process-path-stack "ghci")
+			(haskell-process-path-to-list haskell-process-path-stack)
+                        (list "ghci")
                         (let ((target (haskell-session-target session)))
                           (if target (list target) nil))
                         haskell-process-args-stack-ghci))))))))
+
+(defun haskell-process-path-to-list (path)
+  "Convert a path (which may be a string or a list) to a list."
+  (if (stringp path)
+      (list path)
+    path))
 
 (defun haskell-process-make (name)
   "Make an inferior Haskell process."
@@ -297,10 +306,11 @@ Returns NIL when no completions found."
          (reqstr (concat ":complete repl"
                          mlimit
                          (haskell-string-literal-encode inputstr)))
-         (rawstr (haskell-process-queue-sync-request process reqstr)))
-    ;; TODO use haskell-utils-parse-repl-response
-    (if (string-prefix-p "unknown command " rawstr)
-        (error "GHCi lacks `:complete' support (try installing 7.8 or ghci-ng)")
+         (rawstr (haskell-process-queue-sync-request process reqstr))
+         (response-status (haskell-utils-repl-response-error-status rawstr)))
+    (if (eq 'unknown-command response-status)
+        (error
+         "GHCi lacks `:complete' support (try installing GHC 7.8+ or ghci-ng)")
       (let* ((s1 (split-string rawstr "\r?\n" t))
              (cs (mapcar #'haskell-string-literal-decode (cdr s1)))
              (h0 (car s1))) ;; "<limit count> <all count> <unused string>"
@@ -356,7 +366,7 @@ re-asking about the same imports."
   (haskell-process-set p 'evaluating v))
 
 (defun haskell-process-evaluating-p (p)
-  "Set status of evaluating to be on/off."
+  "Get status of evaluating (on/off)."
   (haskell-process-get p 'evaluating))
 
 (defun haskell-process-set-process (p v)
@@ -475,7 +485,7 @@ function and remove this comment.
   "Call the command's complete function."
   (let ((comp-func (haskell-command-complete command)))
     (when comp-func
-      (condition-case e
+      (condition-case-unless-debug e
           (funcall comp-func
                    (haskell-command-state command)
                    response)

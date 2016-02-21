@@ -1,6 +1,7 @@
 ;;; haskell-utils.el --- General utility functions used by haskell-mode modules -*- lexical-binding: t -*-
 
-;; Copyright (C) 2013  Herbert Valerio Riedel
+;; Copyright © 2013 Herbert Valerio Riedel
+;;             2016 Arthur Fayzrakhmanov
 
 ;; Author: Herbert Valerio Riedel <hvr@gnu.org>
 
@@ -47,7 +48,8 @@
 (defun haskell-utils-read-directory-name (prompt default)
   "Read directory name and normalize to true absolute path.
 Refer to `read-directory-name' for the meaning of PROMPT and
-DEFAULT. If `haskell-process-load-or-reload-prompt' is nil, accept `default'."
+DEFAULT.  If `haskell-process-load-or-reload-prompt' is nil,
+accept `default'."
   (let ((filename (file-truename (read-directory-name prompt default default))))
     (concat (replace-regexp-in-string "/$" "" filename) "/")))
 
@@ -79,7 +81,7 @@ This hook pushes value of variable `this-command' to flag variable
 (defun haskell-utils-async-watch-changes ()
   "Watch for triggered commands during async operation execution.
 Resets flag variable
-`haskell-utils-async-update-post-command-flag' to NIL.  By chanhges it is
+`haskell-utils-async-update-post-command-flag' to NIL.  By changes it is
 assumed that nothing happened, e.g. nothing was inserted in
 buffer, point was not moved, etc.  To collect data `post-command-hook' is used."
   (setq haskell-utils-async-post-command-flag nil)
@@ -98,32 +100,45 @@ execusion."
     (remove-hook
      'post-command-hook #'haskell-utils-async-update-post-command-flag t)))
 
-(defun haskell-utils-reduce-string (s)
-  "Remove newlines ans extra whitespace from S.
-Removes all extra whitespace at the beginning of each line leaving
-only single one.  Then removes all newlines."
-  (let ((s_ (replace-regexp-in-string "^\s+" " " s)))
-    (replace-regexp-in-string "\n" "" s_)))
+(defun haskell-utils-reduce-string (str)
+  "Remove newlines and extra whitespace from string STR.
+If line starts with a sequence of whitespaces, substitutes this
+sequence with a single whitespace.  Removes all newline
+characters."
+  (let ((s (replace-regexp-in-string "^\s+" " " str)))
+    (replace-regexp-in-string "\r?\n" "" s)))
 
-(defun haskell-utils-parse-repl-response (r)
-  "Parse response R from REPL and return special kind of result.
-The result is response string itself with speacial property
-response-type added.
-
-This property could be of the following:
+(defun haskell-utils-repl-response-error-status (response)
+  "Parse response REPL's RESPONSE for errors.
+Returns one of the following symbols:
 
 + unknown-command
 + option-missing
 + interactive-error
-+ success"
-  (let ((first-line (car (split-string r "\n"))))
++ no-error
+
+*Warning*: this funciton covers only three kind of responses:
+
+* \"unknown command …\"
+  REPL missing requested command
+* \"<interactive>:3:5: …\"
+  interactive REPL error
+* \"Couldn't guess that module name. Does it exist?\"
+  (:type-at and maybe some other commands error)
+* *all other reposnses* are treated as success reposneses and
+  'no-error is returned."
+  (let ((first-line (car (split-string response "\n" t))))
     (cond
-     ((string-match-p "^unknown command" first-line) 'unknown-command)
-     ((string-match-p "^Couldn't guess that module name. Does it exist?"
-                      first-line)
+     ((null first-line) 'no-error)
+     ((string-match-p "^unknown command" first-line)
+      'unknown-command)
+     ((string-match-p
+       "^Couldn't guess that module name. Does it exist?"
+       first-line)
       'option-missing)
-     ((string-match-p "^<interactive>:" first-line) 'interactive-error)
-     (t 'success))))
+     ((string-match-p "^<interactive>:" first-line)
+      'interactive-error)
+     (t 'no-error))))
 
 (defun haskell-utils-compose-type-at-command (pos)
   "Prepare :type-at command to be send to haskell process.

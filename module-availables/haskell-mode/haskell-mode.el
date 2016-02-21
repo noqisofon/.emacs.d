@@ -1,15 +1,18 @@
 ;;; haskell-mode.el --- A Haskell editing mode    -*- coding: utf-8; lexical-binding: t -*-
 
-;; Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008  Free Software Foundation, Inc
-;; Copyright (C) 1992, 1997-1998  Simon Marlow, Graeme E Moss, and Tommy Thorn
+;; Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2016
+;;             Free Software Foundation, Inc
+
+;; Copyright © 1992, 1997-1998  Simon Marlow, Graeme E Moss, and Tommy Thorn
 
 ;; Author:  1992      Simon Marlow
 ;;          1997-1998 Graeme E Moss <gem@cs.york.ac.uk> and
 ;;                    Tommy Thorn <thorn@irisa.fr>,
 ;;          2001-2002 Reuben Thomas (>=v1.4)
 ;;          2003      Dave Love <fx@gnu.org>
+;;          2016      Arthur Fayzrakhmanov
 ;; Keywords: faces files Haskell
-;; Version: 13.17-git
+;; Version: 16.1-git
 ;; URL: https://github.com/haskell/haskell-mode
 
 ;; This file is not part of GNU Emacs.
@@ -140,11 +143,12 @@
 (require 'haskell-sort-imports)
 (require 'haskell-string)
 (require 'haskell-indentation)
+(require 'haskell-font-lock)
 
 ;; All functions/variables start with `(literate-)haskell-'.
 
 ;; Version of mode.
-(defconst haskell-version "13.15-git"
+(defconst haskell-version "16.1-git"
   "The release version of `haskell-mode'.")
 
 ;;;###autoload
@@ -182,6 +186,7 @@ its own, nor does it contain \">\" at the start of a line -- the value
 of `haskell-literate-default' is used.")
 (make-variable-buffer-local 'haskell-literate)
 (put 'haskell-literate 'safe-local-variable 'symbolp)
+
 ;; Default literate style for ambiguous literate buffers.
 (defcustom haskell-literate-default 'bird
   "Default value for `haskell-literate'.
@@ -203,7 +208,7 @@ be set to the preferred literate style."
     (define-key map (kbd "C-c C-i") 'haskell-mode-enable-process-minor-mode)
     (define-key map (kbd "C-c C-s") 'haskell-mode-toggle-scc-at-point)
     map)
-  "Keymap used in Haskell mode.")
+  "Keymap used in `haskell-mode'.")
 
 
 (defvar haskell-ghc-supported-extensions
@@ -496,6 +501,97 @@ executable found in PATH.")
     table)
   "Syntax table used in Haskell mode.")
 
+(defun haskell-syntax-propertize (begin end)
+  (save-excursion
+    (when haskell-literate
+      (goto-char begin)
+      ;; Algorithm (first matching rule wins):
+      ;; - current line is latex code if previous non-empty line was
+      ;;   latex code or was \begin{code} and current line is not
+      ;;   \end{code}
+      ;; - current line is bird code if it starts with >
+      ;; - else literate comment
+      (let ((previous-line-latex-code
+             (catch 'return
+               (save-excursion
+                 (when (= (forward-line -1) 0)
+                   (while (looking-at-p "^[\t ]*$")
+                     (unless (= (forward-line -1) 0)
+                       (throw 'return nil)))
+                   (or
+                    (and
+                     (not (equal (string-to-syntax "<") (syntax-after (point))))
+                     (not (looking-at-p "^>")))
+                    (looking-at-p "^\\\\begin{code}[\t ]*$")))))))
+        (while (< (point) end)
+          (unless (looking-at-p "^[\t ]*$")
+            (if previous-line-latex-code
+                (if (looking-at-p "^\\\\end{code}[\t ]*$")
+                    (progn
+                      (put-text-property (point) (1+ (point)) 'syntax-table (string-to-syntax "<"))
+                      (setq previous-line-latex-code nil))
+                  ;; continue latex-code
+                  )
+              (if (looking-at-p "^>")
+                  ;; this is a whitespace
+                  (put-text-property (point) (1+ (point)) 'syntax-table (string-to-syntax "-"))
+                ;; this is a literate comment
+                (progn
+                  (put-text-property (point) (1+ (point)) 'syntax-table (string-to-syntax "<"))
+                  (when (looking-at-p "^\\\\begin{code}[\t ]*$")
+                    (setq previous-line-latex-code t))))))
+          (forward-line 1))))
+
+    (goto-char begin)
+    (let ((ppss (syntax-ppss)))
+      (when (nth 8 ppss)
+        ;; go to the beginning of a comment or string
+        (goto-char (nth 8 ppss))
+        (when (equal ?| (nth 3 ppss))
+          ;; if this is a quasi quote we need to backtrack even more
+          ;; to the opening bracket
+          (skip-chars-backward "^[")
+          (goto-char (1- (point)))))
+
+      (while (< (point) end)
+        (let
+            ((token-kind (haskell-lexeme-looking-at-token)))
+
+          (cond
+           ((equal token-kind 'qsymid)
+            (when (member
+                   (haskell-lexeme-classify-by-first-char (char-after (match-beginning 1)))
+                   '(varsym consym))
+              ;; we have to neutralize potential comments here
+              (put-text-property (match-beginning 1) (match-end 1) 'syntax-table (string-to-syntax "."))))
+           ((equal token-kind 'number)
+            (put-text-property (match-beginning 0) (match-end 0) 'syntax-table (string-to-syntax "w")))
+           ((equal token-kind 'char)
+            (put-text-property (match-beginning 0) (1+ (match-beginning 0)) 'syntax-table (string-to-syntax "\""))
+            (put-text-property (1- (match-end 0)) (match-end 0) 'syntax-table (string-to-syntax "\"")))
+           ((equal token-kind 'string)
+            (save-excursion
+              (goto-char (match-beginning 2))
+              (let ((limit (match-end 2)))
+                (save-match-data
+                  (while (re-search-forward "\"" limit t)
+                    (put-text-property (match-beginning 0) (match-end 0) 'syntax-table (string-to-syntax ".")))))
+              ;; Place a generic string delimeter only when an open
+              ;; quote is closed by end-of-line Emacs acts strangely
+              ;; when a generic delimiter is not closed so in case
+              ;; string ends at the end of the buffer we will use
+              ;; plain string
+              (when (and (equal (match-beginning 3) (match-end 3))
+                         (not (equal (match-beginning 3) (point-max))))
+                (put-text-property (match-beginning 1) (match-end 1) 'syntax-table (string-to-syntax "|"))
+                (put-text-property (match-beginning 3) (1+ (match-end 3)) 'syntax-table (string-to-syntax "|")))))
+           ((equal token-kind 'template-haskell-quasi-quote)
+            (put-text-property (match-beginning 2) (match-end 2) 'syntax-table (string-to-syntax "\""))
+            (put-text-property (match-beginning 4) (match-end 4) 'syntax-table (string-to-syntax "\""))))
+          (if token-kind
+              (goto-char (match-end 0))
+            (goto-char end)))))))
+
 (defun haskell-ident-at-point ()
   "Return the identifier under point, or nil if none found.
 May return a qualified name."
@@ -568,16 +664,16 @@ May return a qualified name."
 
 (defvar eldoc-print-current-symbol-info-function)
 
-;; For compatibility with Emacs < 24, derive conditionally
-(defalias 'haskell-parent-mode
-  (if (fboundp 'prog-mode) 'prog-mode 'fundamental-mode))
+(defvar haskell-mode-interactive-prompt-state nil
+  "Special variable indicating a state of user input waiting.")
+
 
 ;; The main mode functions
 ;;;###autoload
-(define-derived-mode haskell-mode haskell-parent-mode "Haskell"
+(define-derived-mode haskell-mode prog-mode "Haskell"
   "Major mode for editing Haskell programs.
 
-For more information aee also Info node `(haskell-mode)Getting Started'.
+For more information see also Info node `(haskell-mode)Getting Started'.
 
 \\<haskell-mode-map>
 
@@ -621,23 +717,20 @@ example, `M-x haskell-doc-mode'. Run it again to disable it.
 To enable a mode for every haskell-mode buffer, add a hook in
 your Emacs configuration. To do that you can customize
 `haskell-mode-hook' or add lines to your .emacs file. For
-example, to enable `haskell-indent-mode' and
-`interactive-haskell-mode', use the following:
+example, to enable `interactive-haskell-mode', use the following:
 
-    (add-hook 'haskell-mode-hook 'haskell-indentation-mode)
     (add-hook 'haskell-mode-hook 'interactive-haskell-mode)
 
 For more details see Info node `(haskell-mode)haskell-mode-hook'.
-
-Warning: do not enable more than one of the above indentation
-modes. See Info node `(haskell-mode)indentation' for more
-details.
 
 Minor modes that work well with `haskell-mode':
 
 - `smerge-mode': show and work with diff3 conflict markers used
   by git, svn and other version control systems."
   :group 'haskell
+  (when (< emacs-major-version 24)
+    (error "haskell-mode requires at least Emacs 24"))
+
   ;; paragraph-{start,separate} should treat comments as paragraphs as well.
   (set (make-local-variable 'paragraph-start)
        (concat " *{-\\| *-- |\\|" page-delimiter))
@@ -653,6 +746,7 @@ Minor modes that work well with `haskell-mode':
   (set (make-local-variable 'comment-end-skip) "[ \t]*\\(-}\\|\\s>\\)")
   (set (make-local-variable 'forward-sexp-function) #'haskell-forward-sexp)
   (set (make-local-variable 'parse-sexp-ignore-comments) nil)
+  (set (make-local-variable 'syntax-propertize-function) #'haskell-syntax-propertize)
 
   ;; Set things up for eldoc-mode.
   (set (make-local-variable 'eldoc-documentation-function)
@@ -662,14 +756,13 @@ Minor modes that work well with `haskell-mode':
        'haskell-ds-create-imenu-index)
   ;; Set things up for font-lock.
   (set (make-local-variable 'font-lock-defaults)
-       '(haskell-font-lock-choose-keywords
-         nil nil ((?\' . "w") (?_  . "w")) nil
-         (font-lock-syntactic-keywords
-          . haskell-font-lock-choose-syntactic-keywords)
+       '((haskell-font-lock-keywords)
+         nil nil nil nil
          (font-lock-syntactic-face-function
           . haskell-syntactic-face-function)
          ;; Get help from font-lock-syntactic-keywords.
-         (parse-sexp-lookup-properties . t)))
+         (parse-sexp-lookup-properties . t)
+         (font-lock-extra-managed-props . (composition))))
   ;; Haskell's layout rules mean that TABs have to be handled with extra care.
   ;; The safer option is to avoid TABs.  The second best is to make sure
   ;; TABs stops are 8 chars apart, as mandated by the Haskell Report.  --Stef
@@ -757,21 +850,39 @@ it that many times.  Negative arg -N means move backward across N
 balanced expressions.  This command assumes point is not in a
 string or comment.
 
-Note that negative arguments do not work so well."
+If unable to move over a sexp, signal `scan-error' with three
+arguments: a message, the start of the obstacle (a parenthesis or
+list marker of some kind), and end of the obstacle."
   (interactive "^p")
   (or arg (setq arg 1))
   (if (< arg 0)
-      ;; Fall back to native Emacs method for negative arguments.
-      ;; Haskell has maximum munch rule that does not work well
-      ;; backwards.
-      (progn
-        (goto-char (or (scan-sexps (point) arg) (buffer-end arg)))
-        (backward-prefix-chars))
+      (while (< arg 0)
+        (skip-syntax-backward "->")
+        ;; Navigate backwards using plain `backward-sexp', assume that it
+        ;; skipped over at least one Haskell expression, and jump forward until
+        ;; last possible point before the starting position. If applicable,
+        ;; `scan-error' is signalled by `backward-sexp'.
+        (let ((end (point))
+              (forward-sexp-function nil))
+          (backward-sexp)
+          (let ((cur (point)))
+            (while (< (point) end)
+              (setf cur (point))
+              (haskell-forward-sexp)
+              (skip-syntax-forward "->"))
+            (goto-char cur)))
+        (setf arg (1+ arg)))
     (save-match-data
-      (if (haskell-lexeme-looking-at-token)
-          (if (member (match-string 0) (list "(" "[" "{"))
-              (goto-char (or (scan-sexps (point) arg) (buffer-end arg)))
-            (goto-char (match-end 0)))))))
+      (while (> arg 0)
+        (when (haskell-lexeme-looking-at-token)
+          (cond ((member (match-string 0) (list "(" "[" "{"))
+                 (goto-char (or (scan-sexps (point) 1) (buffer-end 1))))
+                ((member (match-string 0) (list ")" "]" "}"))
+                 (signal 'scan-error (list "Containing expression ends prematurely."
+                                           (match-beginning 0)
+                                           (match-end 0))))
+                (t (goto-char (match-end 0)))))
+        (setf arg (1- arg))))))
 
 
 
@@ -824,7 +935,8 @@ Note that negative arguments do not work so well."
 
 (defcustom haskell-indent-spaces 2
   "Number of spaces to indent inwards."
-  :group 'haskell)
+  :group 'haskell
+  :type 'integer)
 
 ;; Like Python.  Should be abstracted, sigh.
 (defun haskell-check (command)
@@ -866,15 +978,6 @@ To be added to `flymake-init-create-temp-buffer-copy'."
 (defun haskell-mode-before-save-handler ()
   "Function that will be called before buffer's saving."
   )
-
-(defun haskell-mode-jump-to-loc (loc)
-  "Jump to the given location.
-LOC = (list FILE LINE COL)"
-  (find-file (elt loc 0))
-  (goto-char (point-min))
-  (forward-line (1- (elt loc 1)))
-  (goto-char (+ (line-beginning-position)
-                (1- (elt loc 2)))))
 
 ;; From Bryan O'Sullivan's blog:
 ;; http://www.serpentine.com/blog/2007/10/09/using-emacs-to-insert-scc-annotations-in-haskell-code/
@@ -966,7 +1069,12 @@ successful, nil otherwise."
     (goto-char (point-min))
     (end-of-line)))
 
-
+(defun haskell-mode-toggle-interactive-prompt-state (&optional disabled)
+  "Set `haskell-mode-interactive-prompt-state' to t.
+If given DISABLED argument sets variable value to nil, otherwise to t."
+  (setq haskell-mode-interactive-prompt-state (not disabled)))
+
+
 ;; Provide ourselves:
 
 (provide 'haskell-mode)

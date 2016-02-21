@@ -82,6 +82,7 @@ one match."
     (helm-exit-and-execute-action
      (lambda (c)
        (helm-etags-action-goto 'find-file-other-window c)))))
+(put 'helm-etags-run-switch-other-window 'helm-only t)
 
 (defun helm-etags-run-switch-other-frame ()
   "Run switch to other frame action from `helm-source-etags-select'."
@@ -90,6 +91,7 @@ one match."
     (helm-exit-and-execute-action
      (lambda (c)
        (helm-etags-action-goto 'find-file-other-frame c)))))
+(put 'helm-etags-run-switch-other-frame 'helm-only t)
 
 (defvar helm-etags-map
   (let ((map (make-sparse-keymap)))
@@ -159,13 +161,12 @@ If not found in CURRENT-DIR search in upper directory."
 
 (defun helm-etags-create-buffer (file)
   "Create the `helm-buffer' based on contents of etags tag FILE."
-  (let* ((tag-fname file)
-         max
-         (split (with-current-buffer (find-file-noselect tag-fname)
+  (let* (max
+         (split (with-temp-buffer
+                  (insert-file-contents file)
                   (prog1
                       (split-string (buffer-string) "\n" 'omit-nulls)
-                    (setq max (line-number-at-pos (point-max)))
-                    (kill-buffer))))
+                    (setq max (line-number-at-pos (point-max))))))
          (progress-reporter (make-progress-reporter "Loading tag file..." 0 max)))
     (cl-loop
           with fname

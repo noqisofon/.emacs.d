@@ -257,16 +257,16 @@
 
 (defun emmet-prop-value (name input)
   (emmet-pif (emmet-parse "=\"\\(.*?\\)\"" 2
-                                  "=\"property value\""
-                                  (let ((value (elt it 1))
-                                        (input (elt it 2)))
-                                    `((,(read name) ,value) . ,input)))
-                 it
-                 (emmet-parse "=\\([^\\,\\+\\>\\{\\}\\ )]*\\)" 2
-                                  "=property value"
-                                  (let ((value (elt it 1))
-                                        (input (elt it 2)))
-                                    `((,(read name) ,value) . ,input)))))
+                          "=\"property value\""
+                          (let ((value (elt it 1))
+                                (input (elt it 2)))
+                            `((,(read name) ,(emmet-split-numbering-expressions value)) . ,input)))
+             it
+             (emmet-parse "=\\([^\\,\\+\\>\\{\\}\\ )]*\\)" 2
+                          "=property value"
+                          (let ((value (elt it 1))
+                                (input (elt it 2)))
+                            `((,(read name) ,(emmet-split-numbering-expressions value)) . ,input)))))
 
 (defun emmet-tag-classes (tag input)
   (let ((tag-data (cadr tag)))
@@ -287,9 +287,12 @@
 
 (defun emmet-text (input)
   "A zen coding expression innertext."
-  (emmet-parse "{\\(.*?\\)}" 2 "inner text"
-                   (let ((txt (emmet-split-numbering-expressions (elt it 1))))
-                     `((text ,txt) . ,input))))
+  (emmet-parse "{\\(\\(?:\\\\.\\|[^\\\\}]\\)*?\\)}" 2 "inner text"
+               (let ((txt (emmet-split-numbering-expressions (elt it 1))))
+                 (if (listp txt)
+                     (setq txt (cons (car txt) (cons (replace-regexp-in-string "\\\\\\(.\\)" "\\1" (cadr txt)) (cddr txt))))
+                   (setq txt (replace-regexp-in-string "\\\\\\(.\\)" "\\1" txt)))
+                 `((text ,txt) . ,input))))
 
 (defun emmet-properties (input)
   "A bracketed emmet property expression."
@@ -421,6 +424,9 @@
   "Function to execute when expanding a leaf node in the
   Emmet AST.")
 
+(defvar emmet-expand-jsx-className? nil
+  "Wether to use `className' when expanding `.classes'")
+
 (emmet-defparameter
  emmet-tag-settings-table
  (gethash "tags" (gethash "html" emmet-preferences)))
@@ -544,7 +550,8 @@
        (puthash tag-name fn emmet-tag-snippets-table)))
 
    (let* ((id           (emmet-concat-or-empty " id=\"" tag-id "\""))
-          (classes      (emmet-mapconcat-or-empty " class=\"" tag-classes " " "\""))
+          (class-attr  (if emmet-expand-jsx-className? " className=\"" " class=\""))
+          (classes      (emmet-mapconcat-or-empty class-attr tag-classes " " "\""))
           (props        (let* ((tag-props-default
                                 (and settings (gethash "defaultAttr" settings)))
                                (merged-tag-props
@@ -568,7 +575,7 @@
              (if self-closing? "/>"
                (concat ">"
                        (if tag-txt
-                           (if block-indentation? 
+                           (if block-indentation?
                                (emmet-indent tag-txt)
                              tag-txt))
                        (if content

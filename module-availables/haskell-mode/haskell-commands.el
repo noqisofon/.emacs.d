@@ -6,7 +6,8 @@
 ;;; specific commands such as show type signature, show info, haskell process
 ;;; commands and etc.
 
-;; Copyright (c) 2014 Chris Done. All rights reserved.
+;; Copyright © 2014 Chris Done.  All rights reserved.
+;;             2016 Arthur Fayzrakhmanov
 
 ;; This file is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -25,6 +26,7 @@
 
 (require 'cl-lib)
 (require 'etags)
+(require 'haskell-mode)
 (require 'haskell-compat)
 (require 'haskell-process)
 (require 'haskell-font-lock)
@@ -164,8 +166,7 @@ MODULE-BUFFER is the actual Emacs buffer of the module being loaded."
   "History list for session targets.")
 
 (defun haskell-process-hayoo-ident (ident)
-  ;; FIXME Obsolete doc string, CALLBACK is not used.
-  "Hayoo for IDENT, return a list of modules asyncronously through CALLBACK."
+  "Hayoo for IDENT, return a list of modules"
   ;; We need a real/simulated closure, because otherwise these
   ;; variables will be unbound when the url-retrieve callback is
   ;; called.
@@ -309,7 +310,6 @@ If PROMPT-VALUE is non-nil, request identifier via mini-buffer."
 
 ;;;###autoload
 (defun haskell-process-do-type (&optional insert-value)
-  ;; FIXME insert value functionallity seems to be missing.
   "Print the type of the given expression.
 
 Given INSERT-VALUE prefix indicates that result type signature
@@ -355,7 +355,9 @@ position with `xref-pop-marker-stack'."
         (haskell-mode-handle-generic-loc loc)
       (call-interactively 'haskell-mode-tag-find))
     (unless (equal initial-loc (point-marker))
-      (xref-push-marker-stack initial-loc))))
+      (save-excursion
+        (goto-char initial-loc)
+        (xref-push-marker-stack)))))
 
 ;;;###autoload
 (defun haskell-mode-goto-loc ()
@@ -456,7 +458,12 @@ Returns:
   "Either jump to or echo a generic location LOC.
 Either a file or a library."
   (cl-case (car loc)
-    (file (haskell-mode-jump-to-loc (cdr loc)))
+    (file (progn
+              (find-file (elt loc 1))
+              (goto-char (point-min))
+              (forward-line (1- (elt loc 2)))
+              (goto-char (+ (line-beginning-position)
+                            (1- (elt loc 3))))))
     (library (message "Defined in `%s' (%s)."
                       (elt loc 2)
                       (elt loc 1)))
@@ -636,7 +643,7 @@ happened since function invocation)."
                (min-pos (caar pos-reg))
                (max-pos (cdar pos-reg))
                (sig (haskell-utils-reduce-string response))
-               (res-type (haskell-utils-parse-repl-response sig)))
+               (res-type (haskell-utils-repl-response-error-status sig)))
 
           (cl-case res-type
             ;; neither popup presentation buffer
@@ -737,39 +744,53 @@ inferior GHCi process."
   (interactive)
   (let ((session (haskell-interactive-session))
         (changed nil))
-    (if (null (haskell-session-get session
-                                   'ignored-files))
+    (if (null (haskell-session-get session 'ignored-files))
         (message "Nothing to unignore!")
-      (cl-loop for file in (haskell-session-get session
-                                                'ignored-files)
-               do (cl-case (read-event
-                            (propertize (format "Set permissions? %s (y, n, v: stop and view file)"
-                                                file)
-                                        'face 'minibuffer-prompt))
-                    (?y
-                     (haskell-process-unignore-file session file)
-                     (setq changed t))
-                    (?v
-                     (find-file file)
-                     (cl-return))))
-      (when (and changed
-                 (y-or-n-p "Restart GHCi process now? "))
-        (haskell-process-restart)))))
+      (cl-loop for file in (haskell-session-get session 'ignored-files)
+               do
+               (haskell-mode-toggle-interactive-prompt-state)
+               (unwind-protect
+                   (progn
+                     (cl-case
+                         (read-event
+                          (propertize
+                           (format "Set permissions? %s (y, n, v: stop and view file)"
+                                   file)
+                           'face
+                           'minibuffer-prompt))
+                       (?y
+                        (haskell-process-unignore-file session file)
+                        (setq changed t))
+                       (?v
+                        (find-file file)
+                        (cl-return)))
+                     (when (and changed
+                                (y-or-n-p "Restart GHCi process now? "))
+                       (haskell-process-restart)))
+                 ;; unwind
+                 (haskell-mode-toggle-interactive-prompt-state t))))))
 
 ;;;###autoload
 (defun haskell-session-change-target (target)
   "Set the build TARGET for cabal REPL."
   (interactive
    (list
-     (completing-read "New build target: " (haskell-cabal-enum-targets)
-		      nil nil nil 'haskell-cabal-targets-history)))
+    (completing-read "New build target: "
+                     (haskell-cabal-enum-targets)
+                     nil
+                     nil
+                     nil
+                     'haskell-cabal-targets-history)))
   (let* ((session haskell-session)
          (old-target (haskell-session-get session 'target)))
     (when session
       (haskell-session-set-target session target)
-      (when (and (not (string= old-target target))
-                 (y-or-n-p "Target changed, restart haskell process?"))
-        (haskell-process-start session)))))
+      (when (not (string= old-target target))
+        (haskell-mode-toggle-interactive-prompt-state)
+        (unwind-protect
+            (when (y-or-n-p "Target changed, restart haskell process?")
+              (haskell-process-start session)))
+        (haskell-mode-toggle-interactive-prompt-state t)))))
 
 ;;;###autoload
 (defun haskell-mode-stylish-buffer ()

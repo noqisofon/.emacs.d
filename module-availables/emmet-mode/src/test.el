@@ -267,6 +267,13 @@
    "    <li class=\"item1\">name: item1 price: 1$</li>"
    "    <li class=\"item2\">name: item2 price: 2$</li>"
    "    <li class=\"item3\">name: item3 price: 3$</li>"
+   "</ul>")
+
+  "ul>li[id=\"thing-$\"]*3"
+  ("<ul>"
+   "    <li id=\"thing-1\"></li>"
+   "    <li id=\"thing-2\"></li>"
+   "    <li id=\"thing-3\"></li>"
    "</ul>"))
 
 (define-emmet-transform-html-test-case Properties
@@ -670,6 +677,29 @@
   #'emmet-regression-54-test
   '((("span.whut[thing=\"stuff\"]{Huh?}") . "<div class=\"broken\"><span class=\"whut\" thing=\"stuff\">Huh?</span>")))
 
+(define-emmet-transform-html-test-case regression-61-bracket-escapes
+  "div{\\}\\}\\}}" ("<div>}}}</div>"))
+
+(defun emmet-expand-jsx-className?-test (lis)
+  (let ((es (car lis))
+        (indent-tabs-mode nil)
+        (tab-width 2)
+        (standard-indent 2)
+        (emmet-expand-jsx-className? t))
+    (with-temp-buffer
+      (emmet-mode 1)
+      (sgml-mode)
+      (insert es)
+      (emmet-expand-line nil)
+      (buffer-string))))
+
+(emmet-run-test-case "JSX's className 1"
+  #'emmet-expand-jsx-className?-test
+  '(((".jsx") . "<div className=\"jsx\"></div>")))
+
+(emmet-run-test-case "JSX's className 2"
+  #'emmet-expand-jsx-className?-test
+  '(((".jsx>ul.lis>li.itm{x}*2") . "<div className=\"jsx\">\n  <ul className=\"lis\">\n    <li className=\"itm\">x</li>\n    <li className=\"itm\">x</li>\n  </ul>\n</div>")))
 
 ;; start
 (emmet-test-cases)

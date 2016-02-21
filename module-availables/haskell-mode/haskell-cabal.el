@@ -1,6 +1,7 @@
 ;;; haskell-cabal.el --- Support for Cabal packages -*- lexical-binding: t -*-
 
-;; Copyright (C) 2007, 2008  Stefan Monnier
+;; Copyright © 2007, 2008  Stefan Monnier
+;;             2016 Arthur Fayzrakhmanov
 
 ;; Author: Stefan Monnier <monnier@iro.umontreal.ca>
 
@@ -79,7 +80,6 @@
     ;; We could use font-lock-syntactic-keywords, but is it worth it?
     ;; (modify-syntax-entry ?-  ". 12" st)
     (modify-syntax-entry ?\n ">" st)
-    (modify-syntax-entry ?. "w"  st)
     (modify-syntax-entry ?- "w"  st)
     st))
 
@@ -97,7 +97,9 @@
      (1 font-lock-keyword-face) (2 font-lock-constant-face))
     ("^ *\\(if\\)[ \t]+.*\\({\\|$\\)" (1 font-lock-keyword-face))
     ("^ *\\(}[ \t]*\\)?\\(else\\)[ \t]*\\({\\|$\\)"
-     (2 font-lock-keyword-face))))
+     (2 font-lock-keyword-face))
+    ("\\<\\(?:True\\|False\\)\\>"
+     (0 font-lock-constant-face))))
 
 (defvar haskell-cabal-buffers nil
   "List of Cabal buffers.")
@@ -211,7 +213,7 @@ Return nil if no Cabal description file could be located via
   "Search for package description file upwards starting from DIR.
 If DIR is nil, `default-directory' is used as starting point for
 directory traversal.  Upward traversal is aborted if file owner
-changes.  Uses`haskell-cabal-find-pkg-desc' internally."
+changes.  Uses `haskell-cabal-find-pkg-desc' internally."
   (let ((use-dir (or dir default-directory)))
     (while (and use-dir (not (file-directory-p use-dir)))
       (setq use-dir (file-name-directory (directory-file-name use-dir))))
@@ -309,14 +311,6 @@ OTHER-WINDOW use `find-file-other-window'."
   :group 'haskell
 )
 
-(defcustom haskell-cabal-list-comma-position
-  'before
-  "Where to put the comma in lists"
-  :safe t
-  :group 'haskell-cabal
-  :type '(choice (const before)
-                 (const after)))
-
 (defconst haskell-cabal-section-header-regexp "^[[:alnum:]]" )
 (defconst haskell-cabal-subsection-header-regexp "^[ \t]*[[:alnum:]]\\w*:")
 (defconst haskell-cabal-comment-regexp "^[ \t]*--")
@@ -373,14 +367,14 @@ OTHER-WINDOW use `find-file-other-window'."
   (goto-char (haskell-cabal-section-end)))
 
 (defun haskell-cabal-next-section ()
-  "Go to the next extion"
+  "Go to the next section"
   (interactive)
   (when (haskell-cabal-section-header-p) (forward-line))
   (while (not (or (eobp) (haskell-cabal-section-header-p)))
     (forward-line)))
 
 (defun haskell-cabal-previous-section ()
-  "Go to the next extion"
+  "Go to the next section"
   (interactive)
   (when (haskell-cabal-section-header-p) (forward-line -1))
   (while (not (or (bobp) (haskell-cabal-section-header-p)))
@@ -471,7 +465,7 @@ OTHER-WINDOW use `find-file-other-window'."
 and execute FORMS
 
 If REPLACE is non-nil the subsection data is replaced with the
-resultung buffer-content"
+resulting buffer-content"
   (let ((section (make-symbol "section"))
         (beg (make-symbol "beg"))
         (end (make-symbol "end"))
@@ -502,7 +496,7 @@ resultung buffer-content"
                  (insert ,section-data))))))))
 
 (defmacro haskell-cabal-each-line (&rest fun)
-  "Execute FOMRS on each line"
+  "Execute FORMS on each line"
   `(save-excursion
      (while (< (point) (point-max))
        ,@fun
@@ -569,25 +563,69 @@ resultung buffer-content"
              (haskell-cabal-add-indentation (- ,old-l1-indent
                                            ,new-l1-indent))))))))
 
-(defun haskell-cabal-strip-list ()
-  "strip commas from comma-seperated list"
-  (goto-char (point-min))
-;; split list items on single line
-  (while (re-search-forward
-          "\\([^ \t,\n]\\)[ \t]*,[ \t]*\\([^ \t,\n]\\)"  nil t)
-    (replace-match "\\1\n\\2" nil nil))
-  (goto-char (point-min))
-  (while (re-search-forward "^\\([ \t]*\\),\\([ \t]*\\)" nil t)
-    (replace-match "" nil nil))
-  (goto-char (point-min))
-  (while (re-search-forward ",[ \t]*$" nil t)
-    (replace-match "" nil nil))
-  (goto-char (point-min))
-  (haskell-cabal-each-line (haskell-cabal-chomp-line)))
+(defun haskell-cabal-comma-separatorp (pos)
+  "Return non-nil when the char at POS is a comma separator.
+Characters that are not a comma, or commas inside a commment or
+string, are not comma separators."
+  (when (eq (char-after pos) ?,)
+    (let ((ss (syntax-ppss pos)))
+      (not
+       (or
+        ;; inside a string
+        (nth 3 ss)
+        ;; inside a comment
+        (nth 4 ss))))))
 
-(defun haskell-cabal-listify ()
-  "Add commas so that buffer contains a comma-seperated list"
-  (cl-case haskell-cabal-list-comma-position
+(defun haskell-cabal-strip-list-and-detect-style ()
+  "Strip commas from a comma-separated list.
+Detect and return the comma style.  The possible options are:
+
+before: a comma at the start of each line (except the first), e.g.
+    Foo
+  , Bar
+
+after: a comma at the end of each line (except the last), e.g.
+    Foo,
+    Bar
+
+single: everything on a single line, but comma-separated, e.g.
+    Foo, Bar
+
+nil: no commas, e.g.
+    Foo Bar
+
+If the styles are mixed, the position of the first comma
+determines the style."
+  (let (comma-style)
+    ;; split list items on single line
+    (goto-char (point-min))
+    (while (re-search-forward
+            "\\([^ \t,\n]\\)[ \t]*\\(,\\)[ \t]*\\([^ \t,\n]\\)"  nil t)
+      (when (haskell-cabal-comma-separatorp (match-beginning 2))
+        (setq comma-style 'single)
+        (replace-match "\\1\n\\3" nil nil)))
+    ;; remove commas before
+    (goto-char (point-min))
+    (while (re-search-forward "^\\([ \t]*\\),\\([ \t]*\\)" nil t)
+      (setq comma-style 'before)
+      (replace-match "" nil nil))
+    ;; remove trailing commas
+    (goto-char (point-min))
+    (while (re-search-forward ",[ \t]*$" nil t)
+      (unless (eq comma-style 'before)
+        (setq comma-style 'after))
+      (replace-match "" nil nil))
+    (goto-char (point-min))
+
+    (haskell-cabal-each-line (haskell-cabal-chomp-line))
+    comma-style))
+
+(defun haskell-cabal-listify (comma-style)
+  "Add commas so that the buffer contains a comma-separated list.
+Respect the COMMA-STYLE, see
+`haskell-cabal-strip-list-and-detect-style' for the possible
+styles."
+  (cl-case comma-style
     ('before
      (goto-char (point-min))
      (while (haskell-cabal-ignore-line-p) (forward-line))
@@ -603,16 +641,25 @@ resultung buffer-content"
          (forward-line -1)
          (end-of-line)
          (insert ",")
-         (beginning-of-line))))))
-
-
+         (beginning-of-line))))
+    ('single
+     (goto-char (point-min))
+     (while (not (eobp))
+       (end-of-line)
+       (unless (eobp)
+         (insert ", ")
+         (delete-char 1)
+         (just-one-space))))))
 
 (defmacro haskell-cabal-with-cs-list (&rest funs)
-  "format buffer so that each line contains a list element "
-  `(progn
-    (save-excursion (haskell-cabal-strip-list))
-    (unwind-protect (progn ,@funs)
-      (haskell-cabal-listify))))
+  "Format the buffer so that each line contains a list element.
+Respect the comma style."
+  (let ((comma-style (make-symbol "comma-style")))
+    `(let ((,comma-style
+            (save-excursion
+              (haskell-cabal-strip-list-and-detect-style))))
+       (unwind-protect (progn ,@funs)
+         (haskell-cabal-listify ,comma-style)))))
 
 
 (defun haskell-cabal-sort-lines-key-fun ()
@@ -663,7 +710,7 @@ resultung buffer-content"
   (haskell-cabal-forward-to-line-entry))
 
 (defun haskell-cabal-previous-subsection ()
-  "go to the next subsection"
+  "go to the previous subsection"
   (interactive)
   (if (haskell-cabal-header-p) (forward-line -1))
   (while (and (not (bobp))
@@ -674,7 +721,7 @@ resultung buffer-content"
 
 
 (defun haskell-cabal-find-subsection-by (section pred)
-  "Find sunsection with name NAME"
+  "Find subsection with name NAME"
   (save-excursion
     (when section (goto-char (haskell-cabal-section-start section)))
     (let* ((end (if section (haskell-cabal-section-end) (point-max)))
@@ -688,7 +735,7 @@ resultung buffer-content"
       found)))
 
 (defun haskell-cabal-find-subsection (section name)
-  "Find sunsection with name NAME"
+  "Find subsection with name NAME"
   (let ((downcase-name (downcase name)))
     (haskell-cabal-find-subsection-by
      section
@@ -747,7 +794,11 @@ resultung buffer-content"
           (marked-line (goto-char marked-line)))))
 
 (defmacro haskell-cabal-with-subsection-line (replace &rest forms)
-  "Mark line and "
+  "Mark line, copy subsection data into a temporary buffer, save indentation
+and execute FORMS at the marked line.
+
+If REPLACE is non-nil the subsection data is replaced with the
+resulting buffer-content.  Unmark line at the end."
   `(progn
      (haskell-cabal-mark)
      (unwind-protect
@@ -808,7 +859,7 @@ Source names from main-is and c-sources sections are left untouched
 )
 
 (defun haskell-cabal-find-or-create-source-file ()
-  "Open the source file this line refers to"
+  "Open the source file this line refers to."
   (interactive)
   (let* ((src-dirs (append (haskell-cabal-subsection-entry-list
                             (haskell-cabal-section) "hs-source-dirs")
@@ -819,17 +870,25 @@ Source names from main-is and c-sources sections are left untouched
       (let ((candidates
              (delq nil (mapcar
                         (lambda (dir)
-                          (let ((file (haskell-cabal-join-paths base-dir dir filename)))
+                          (let ((file (haskell-cabal-join-paths base-dir
+                                                                dir
+                                                                filename)))
                             (when (and (file-readable-p file)
                                        (not (file-directory-p file)))
                               file)))
                         src-dirs))))
         (if (null candidates)
-            (let* ((src-dir (haskell-cabal-join-paths base-dir (or (car src-dirs) "")))
-                   (newfile (haskell-cabal-join-paths src-dir filename))
-                   (do-create-p (y-or-n-p (format "Create file %s ?" newfile))))
-              (when do-create-p
-                (find-file-other-window newfile )))
+            (unwind-protect
+                (progn
+                  (haskell-mode-toggle-interactive-prompt-state)
+                  (let* ((src-dir
+                          (haskell-cabal-join-paths base-dir
+                                                    (or (car src-dirs) "")))
+                         (newfile (haskell-cabal-join-paths src-dir filename))
+                         (do-create-p (y-or-n-p (format "Create file %s ?" newfile))))
+                    (when do-create-p
+                      (find-file-other-window newfile ))))
+              (haskell-mode-toggle-interactive-prompt-state t))
           (find-file-other-window (car candidates)))))))
 
 
@@ -937,40 +996,50 @@ Source names from main-is and c-sources sections are left untouched
                      'haskell-cabal-sort-lines-key-fun)))))))
 
 (defun haskell-cabal-add-build-dependency (dependency &optional sort silent)
-  "Add a build dependencies to sections"
+  "Add the given DEPENDENCY to every section in cabal file.
+If SORT argument is given sort dependencies in section after update.
+Pass SILENT argument to update all sections without asking user."
   (haskell-cabal-map-sections
    (lambda (section)
      (when (haskell-cabal-source-section-p section)
-       (when (or silent
-                 (y-or-n-p (format  "Add dependency %s to %s section %s?"
-                                    dependency
-                                    (haskell-cabal-section-name section)
-                                    (haskell-cabal-section-value section))))
-         (haskell-cabal-section-add-build-dependency dependency sort section)
-         nil)))))
+       (unwind-protect
+           (progn
+             (when
+                 (or silent
+                     (y-or-n-p (format  "Add dependency %s to %s section %s?"
+                                        dependency
+                                        (haskell-cabal-section-name section)
+                                        (haskell-cabal-section-value section))))
+               (haskell-cabal-section-add-build-dependency dependency
+                                                           sort
+                                                           section))
+             nil)
+         (haskell-mode-toggle-interactive-prompt-state t))))))
 
-(defun haskell-cabal-add-dependency (package &optional version no-prompt
-                                                   sort silent)
-  "Add PACKAGE (and optionally suffix -VERSION) to the cabal
-file. Prompts the user before doing so.
-
+(defun haskell-cabal-add-dependency
+    (package &optional version no-prompt sort silent)
+  "Add PACKAGE to the cabal file.
 If VERSION is non-nil it will be appended as a minimum version.
-If NO-PROMPT is nil the minimum-version is read from the minibuffer
-When SORT is non-nil the package entries are sorted afterwards
-If SILENT ist nil the user is prompted for each source-section
-"
+If NO-PROMPT is nil the minimum package version is read from the
+minibuffer.  When SORT is non-nil the package entries are sorted
+afterwards.  If SILENT is non-nil the user is prompted for each
+source-section."
   (interactive
-   (list (read-from-minibuffer "Package entry: ")
-         nil t t nil))
-  (save-window-excursion
-    (find-file-other-window (haskell-cabal-find-file))
-    (let ((entry (if no-prompt package
-                   (read-from-minibuffer
-                    "Package entry: "
-                    (concat package (if version (concat " >= " version) ""))))))
-      (haskell-cabal-add-build-dependency entry sort silent)
-      (when (or silent (y-or-n-p "Save cabal file?"))
-        (save-buffer)))))
+   (list (read-from-minibuffer "Package entry: ") nil t t nil))
+  (haskell-mode-toggle-interactive-prompt-state)
+  (unwind-protect
+      (save-window-excursion
+        (find-file-other-window (haskell-cabal-find-file))
+        (let ((entry (if no-prompt package
+                       (read-from-minibuffer
+                        "Package entry: "
+                        (concat package
+                                (if version (concat " >= " version) ""))))))
+          (haskell-cabal-add-build-dependency entry sort silent)
+          (when (or silent (y-or-n-p "Save cabal file?"))
+            (save-buffer))))
+    ;; unwind
+    (haskell-mode-toggle-interactive-prompt-state t)))
 
 (provide 'haskell-cabal)
 

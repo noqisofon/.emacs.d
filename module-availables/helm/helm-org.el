@@ -55,6 +55,21 @@ Note this have no effect in `helm-org-in-buffer-headings'."
   :group 'helm-org
   :type 'integer)
 
+(defcustom helm-org-headings-actions
+  '(("Go to heading" . helm-org-goto-marker)
+    ("Open in indirect buffer `C-RET'" . helm-org--open-heading-in-indirect-buffer)
+    ("Refile to this heading `C-w`''" . helm-org-heading-refile)
+    ("Insert link to this heading `C-l`''" . helm-org-insert-link-to-heading-at-marker))
+  "Default actions alist for
+  `helm-source-org-headings-for-files'."
+  :group 'helm-org
+  :type '(alist :key-type string :value-type function))
+
+(defcustom helm-org-truncate-lines t
+  "Truncate org-header-lines when non-nil"
+  :type 'boolean
+  :group 'helm-org)
+
 ;;; Org capture templates
 ;;
 ;;
@@ -76,78 +91,114 @@ Note this have no effect in `helm-org-in-buffer-headings'."
   (re-search-backward "^\\*+ " nil t)
   (org-show-entry))
 
+(defun helm-org--open-heading-in-indirect-buffer (marker)
+  (helm-org-goto-marker marker)
+  (org-tree-to-indirect-buffer)
+
+  ;; Put the non-indirect buffer at the bottom of the prev-buffers
+  ;; list so it won't be selected when the indirect buffer is killed
+  (set-window-prev-buffers nil (append (cdr (window-prev-buffers))
+                                       (car (window-prev-buffers)))))
+
+(defun helm-org--run-open-heading-in-indirect-buffer ()
+  "Open selected Org heading in an indirect buffer."
+  (interactive)
+  (with-helm-alive-p
+    (helm-exit-and-execute-action #'helm-org--open-heading-in-indirect-buffer)))
+(put 'helm-org--run-open-heading-in-indirect-buffer 'helm-only t)
+
+(defvar helm-org-headings-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map helm-map)
+    (define-key map (kbd "<C-return>") 'helm-org--run-open-heading-in-indirect-buffer)
+    (define-key map (kbd "C-w") 'helm-org-heading-refile)
+    (define-key map (kbd "C-l") 'helm-org-insert-link-to-heading-at-marker)
+    map)
+  "Keymap for `helm-source-org-headings-for-files'.")
+
+(defclass helm-org-headings-class (helm-source-sync)
+  ((parents
+    :initarg :parents
+    :initform nil
+    :custom boolean)
+   (match :initform
+          (lambda (candidate)
+            (string-match
+             helm-pattern
+             (helm-aif (get-text-property 0 'helm-real-display candidate)
+                 it
+               candidate))))
+   (action :initform 'helm-org-headings-actions)
+   (keymap :initform 'helm-org-headings-map)))
+
+(defmethod helm--setup-source :after ((source helm-org-headings-class))
+  (let ((parents (slot-value source 'parents)))
+    (set-slot-value source 'candidate-transformer
+                    (lambda (candidates)
+                      (let ((cands (helm-org-get-candidates candidates parents)))
+                        (if parents (nreverse cands) cands))))))
+
 (defun helm-source-org-headings-for-files (filenames &optional parents)
-  (helm-build-sync-source "Org Headings"
-    :candidates filenames ; Start with only filenames.
-    :match (lambda (candidate)
-             (string-match
-              helm-pattern
-              (helm-aif (get-text-property 0 'helm-real-display candidate)
-                  it
-                candidate)))
-    :candidate-transformer
-    ;; Now that the helm-window is available proceed to truncation
-    ;; and other transformations.
-    (lambda (candidates)
-      (let ((cands (helm-org-get-candidates candidates parents)))
-         (if parents (nreverse cands) cands)))
-    :action '(("Go to line" . helm-org-goto-marker)
-              ("Refile to this heading" . helm-org-heading-refile)
-              ("Insert link to this heading"
-               . helm-org-insert-link-to-heading-at-marker))))
+  (helm-make-source "Org Headings" helm-org-headings-class
+    :parents parents
+    :candidates filenames))
 
 (defun helm-org-get-candidates (filenames &optional parents)
-  (helm-flatten-list
-   (mapcar (lambda (filename)
-             (helm-org--get-candidates-in-file
-              filename
-              helm-org-headings-fontify
-              (or parents (null helm-org-show-filename))
-              parents))
-           filenames)
-   t))
+  (apply #'append
+         (mapcar (lambda (filename)
+                   (helm-org--get-candidates-in-file
+                    filename
+                    helm-org-headings-fontify
+                    (or parents (null helm-org-show-filename))
+                    parents))
+                 filenames)))
 
 (defun helm-org--get-candidates-in-file (filename &optional fontify nofname parents)
   (with-current-buffer (pcase filename
                          ((pred bufferp) filename)
                          ((pred stringp) (find-file-noselect filename)))
-    (and fontify (jit-lock-fontify-now))
     (let ((match-fn (if fontify
                         #'match-string
-                        #'match-string-no-properties))
+                      #'match-string-no-properties))
           (search-fn (lambda ()
-                       (when (or (null parents)
-                                 (org-up-heading-safe))
-                         (re-search-forward
-                          org-complex-heading-regexp nil t)))))
+                       (re-search-forward
+                        org-complex-heading-regexp nil t)))
+          (file (unless nofname
+                  (concat (helm-basename filename) ":"))))
+      (when parents
+        (add-function :around (var search-fn)
+                      (lambda (old-fn &rest args)
+                                (when (org-up-heading-safe)
+                                  (apply old-fn args)))))
       (save-excursion
         (save-restriction
           (widen)
           (unless parents (goto-char (point-min)))
           (cl-loop with width = (window-width (helm-window))
                    while (funcall search-fn)
-                   for all = (funcall match-fn  0)
-                   for truncated-all = (if (and all (> (length all) width))
-                                           (substring all 0 width) all)
+                   for beg = (point-at-bol)
+                   for end = (point-at-eol)
+                   when (and fontify
+                             (null (text-property-any
+                                    beg end 'fontified t)))
+                   do (jit-lock-fontify-now beg end)
                    for level = (length (match-string-no-properties 1))
                    for heading = (funcall match-fn 4)
-                   for file = (unless nofname
-                                (concat (helm-basename filename) ":"))
                    if (and (>= level helm-org-headings-min-depth)
                            (<= level helm-org-headings-max-depth))
-                   collect (cons (propertize
-                                  (if helm-org-format-outline-path
-                                      (org-format-outline-path
-                                       (append (apply #'org-get-outline-path
-                                                      (unless parents
-                                                        (list t level heading)))
-                                               (list heading))
-                                       width file)
-                                      (if file
-                                          (concat file truncated-all)
-                                          truncated-all))
-                                  'helm-real-display heading)
-                                 (point-marker))))))))
+                   collect `(,(propertize
+                               (if helm-org-format-outline-path
+                                   (org-format-outline-path
+                                    (append (apply #'org-get-outline-path
+                                                   (unless parents
+                                                     (list t level heading)))
+                                            (list heading))
+                                    width file)
+                                   (if file
+                                       (concat file (funcall match-fn  0))
+                                       (funcall match-fn  0)))
+                               'helm-real-display heading)
+                              . ,(point-marker))))))))
 
 (defun helm-org-insert-link-to-heading-at-marker (marker)
   (with-current-buffer (marker-buffer marker)
@@ -176,6 +227,7 @@ Note this have no effect in `helm-org-in-buffer-headings'."
   (interactive)
   (helm :sources (helm-source-org-headings-for-files (org-agenda-files))
         :candidate-number-limit 99999
+        :truncate-lines helm-org-truncate-lines
         :buffer "*helm org headings*"))
 
 ;;;###autoload
@@ -186,6 +238,7 @@ Note this have no effect in `helm-org-in-buffer-headings'."
     (helm :sources (helm-source-org-headings-for-files
                     (list (current-buffer)))
           :candidate-number-limit 99999
+          :truncate-lines helm-org-truncate-lines
           :buffer "*helm org inbuffer*")))
 
 ;;;###autoload
@@ -199,6 +252,7 @@ current heading."
     (helm :sources (helm-source-org-headings-for-files
                     (list (current-buffer)) t)
           :candidate-number-limit 99999
+          :truncate-lines helm-org-truncate-lines
           :buffer "*helm org parent headings*")))
 
 ;;;###autoload
@@ -207,6 +261,7 @@ current heading."
   (interactive)
   (helm :sources (helm-source-org-capture-templates)
         :candidate-number-limit 99999
+        :truncate-lines helm-org-truncate-lines
         :buffer "*helm org capture templates*"))
 
 

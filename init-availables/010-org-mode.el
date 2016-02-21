@@ -8,6 +8,8 @@
 
 (setq org-export-default-language "ja")
 
+(defvar org-odt-data-dir "~/var/org/etc")
+
 (setq org-startup-truncated nil)
 (setq org-return-follows-link t)
 ;;(org-remember-insinuate)

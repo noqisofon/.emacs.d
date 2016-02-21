@@ -89,10 +89,11 @@ positions are allowed."
   :group 'haskell-indentation)
 
 (defconst haskell-indentation-mode-map
-  (let ((keymap (make-sparse-keymap)))
-    (define-key keymap (kbd "RET") 'haskell-indentation-newline-and-indent)
-    (define-key keymap (kbd "<backtab>") 'haskell-indentation-indent-backwards)
-    keymap))
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET") 'haskell-indentation-newline-and-indent)
+    (define-key map (kbd "<backtab>") 'haskell-indentation-indent-backwards)
+    map)
+  "Keymap for `haskell-indentation-mode'.")
 
 ;;;###autoload
 (define-minor-mode haskell-indentation-mode
@@ -643,9 +644,15 @@ For example
   (when (string= current-token "instance")
     (haskell-indentation-read-next-token))
   (haskell-indentation-type)
-  (cond ((string= current-token "=")
-         (haskell-indentation-separated
-          #'haskell-indentation-expression "|" "deriving"))
+  (cond ((eq current-token 'end-tokens)
+         (when (member following-token '("=" "where"))
+           (haskell-indentation-add-indentation current-indent)
+           (throw 'parse-end nil)))
+        ((string= current-token "=")
+         (haskell-indentation-with-starter
+          (lambda ()
+            (haskell-indentation-separated
+             #'haskell-indentation-expression "|" "deriving"))))
         ((string= current-token "where")
          (haskell-indentation-with-starter
           #'haskell-indentation-expression-layout nil))))
@@ -795,15 +802,15 @@ parser.  If parsing ends here, set indentation to left-indent."
 (defun haskell-indentation-declaration ()
   "Parse function or type declaration."
   (haskell-indentation-separated #'haskell-indentation-expression "," nil)
-  (cond ((string= current-token "|")
-         (haskell-indentation-with-starter
-          (apply-partially #'haskell-indentation-separated
-                           #'haskell-indentation-guard "|" nil)
-          nil))
-        ((eq current-token 'end-tokens)
-         (when (member following-token '("|" "=" "::" ","))
-           (haskell-indentation-add-indentation current-indent)
-           (throw 'parse-end nil)))))
+  (when (string= current-token "|")
+    (haskell-indentation-with-starter
+     (apply-partially #'haskell-indentation-separated
+                      #'haskell-indentation-guard "|" nil)
+     nil))
+  (when (eq current-token 'end-tokens)
+   (when (member following-token '("|" "=" "::" ","))
+     (haskell-indentation-add-indentation current-indent)
+     (throw 'parse-end nil))))
 
 (defun haskell-indentation-layout (parser)
   "Parse layout list, where each layout item is parsed by parser."

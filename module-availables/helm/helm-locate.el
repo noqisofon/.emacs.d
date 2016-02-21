@@ -284,30 +284,37 @@ See also `helm-locate'."
          cmd)
       (set-process-sentinel
        (get-buffer-process helm-buffer)
-       (lambda (_process event)
-           (if (string= event "finished\n")
-               (with-helm-window
-                 (setq mode-line-format
-                       '(" " mode-line-buffer-identification " "
-                         (:eval (format "L%s" (helm-candidate-number-at-point))) " "
-                         (:eval (propertize
-                                 (format "[Locate process finished - (%s results)]"
-                                         (max (1- (count-lines
-                                                   (point-min) (point-max)))
-                                              0))
-                                 'face 'helm-locate-finish))))
-                 (force-mode-line-update))
-             (helm-log "Error: Locate %s"
-                       (replace-regexp-in-string "\n" "" event))))))))
+       (lambda (process event)
+         (let* ((err (process-exit-status process))
+                (noresult (= err 1)))
+           (cond (noresult
+                  (with-helm-buffer
+                    (unless (cdr helm-sources)
+                      (insert (concat "* Exit with code 1, no result found,"
+                                      " command line was:\n\n "
+                                      cmd)))))
+                 ((string= event "finished\n")
+                  (with-helm-window
+                    (setq mode-line-format
+                          '(" " mode-line-buffer-identification " "
+                            (:eval (format "L%s" (helm-candidate-number-at-point))) " "
+                            (:eval (propertize
+                                    (format "[Locate process finished - (%s results)]"
+                                            (max (1- (count-lines
+                                                      (point-min) (point-max)))
+                                                 0))
+                                    'face 'helm-locate-finish))))
+                    (force-mode-line-update)))
+                 (t
+                  (helm-log "Error: Locate %s"
+                            (replace-regexp-in-string "\n" "" event))))))))))
 
 (defclass helm-locate-source (helm-source-async helm-type-file)
   ((init :initform 'helm-locate-set-command)
    (candidates-process :initform 'helm-locate-init)
    (requires-pattern :initform 3)
    (history :initform 'helm-file-name-history)
-   (keymap :initform helm-generic-files-map)
    (persistent-action :initform 'helm-ff-kill-or-find-buffer-fname)
-   (help-message :initform 'helm-generic-file-help-message)
    (candidate-number-limit :initform 9999)))
 
 (defvar helm-source-locate
