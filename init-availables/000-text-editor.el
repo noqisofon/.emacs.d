@@ -7,7 +7,7 @@
 (setq-default tab-width 4)
 
 ;; リージョンを kill-ring に入れないで削除できるようにします。
-(delete-selection-mode t)
+(delete-selection-mode 1)
 
 ;; 他のソフトで保存した内容を自動的に読み込み直します。
 (global-auto-revert-mode 1)

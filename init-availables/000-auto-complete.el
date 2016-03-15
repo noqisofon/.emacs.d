@@ -23,10 +23,10 @@
 ;; 
 
 ;;; Code:
-(require-if-exists auto-complete)
-(require-if-exists auto-complete-config)
+;; (require-if-exists auto-complete)
+;; (require-if-exists auto-complete-config)
 
-(global-auto-complete-mode t)
+;; (global-auto-complete-mode t)
 
 
 (provide '000-auto-complete)
