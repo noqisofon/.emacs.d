@@ -45,6 +45,7 @@
 (load "040-vala")
 (load "040-scala")
 (load "040-powershell")
+(load "040-qml")
 
 (provide '040-programing-language)
 ;;; 040-programing-language.el ends here

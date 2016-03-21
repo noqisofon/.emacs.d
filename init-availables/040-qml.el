@@ -1,4 +1,4 @@
-;;; 040-rust.el ---                                  -*- lexical-binding: t; -*-
+;;; 040-qml.el ---                                   -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2016  ned rihine
 
@@ -23,9 +23,10 @@
 ;; 
 
 ;;; Code:
-(lazyload (rust-mode) "rust-mode")
+(require-if-exists qml-mode)
 
-(push '("\\.rs$" . rust-mode) auto-mode-alist)
+(push '("\\.qml$" . qml-mode) auto-mode-alist)
 
-(provide '040-rust)
-;;; 040-rust.el ends here
+
+(provide '040-qml)
+;;; 040-qml.el ends here
