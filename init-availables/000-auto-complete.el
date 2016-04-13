@@ -23,11 +23,17 @@
 ;; 
 
 ;;; Code:
-;; (require-if-exists auto-complete)
-;; (require-if-exists auto-complete-config)
 
-;; (global-auto-complete-mode t)
+;; auto-complete を自動で始まらないようにします？
+(setq ac-auto-start nil)
 
+(require-if-exists auto-complete)
+(require-if-exists auto-complete-config)
+
+;;(global-auto-complete-mode t)
+;;(ac-config-default)
+
+(add-to-list 'ac-dictionary-directories "~/.emacs.d/dict/auto-complete")
 
 (provide '000-auto-complete)
 ;;; 000-auto-complete.el ends here

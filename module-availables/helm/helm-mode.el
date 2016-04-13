@@ -1,6 +1,6 @@
 ;;; helm-mode.el --- Enable helm completion everywhere. -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2015 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -37,6 +37,8 @@
     (trace-function-foreground . helm-completing-read-symbols)
     (trace-function-background . helm-completing-read-symbols)
     (find-tag . helm-completing-read-with-cands-in-buffer)
+    (org-capture . helm-org-completing-read-tags)
+    (org-set-tags . helm-org-completing-read-tags)
     (ffap-alternate-file . nil)
     (tmm-menubar . nil)
     (find-file . nil)
@@ -296,7 +298,7 @@ If COLLECTION is an `obarray', a TEST should be needed. See `obarray'."
                             candidates-in-buffer
                             exec-when-only-one
                             quit-when-no-cand
-                            volatile
+                            (volatile t)
                             sort
                             (fc-transformer 'helm-cr-default-transformer)
                             hist-fc-transformer
@@ -400,7 +402,7 @@ that use `helm-comp-read' See `helm-M-x' for example."
                       . (lambda (candidate)
                           (if ,marked-candidates
                               (helm-marked-candidates)
-                            (identity candidate)))))))
+                              (identity candidate)))))))
     ;; Assume completion have been already required,
     ;; so always use 'confirm.
     (when (eq must-match 'confirm-after-completion)
@@ -479,7 +481,8 @@ that use `helm-comp-read' See `helm-M-x' for example."
                   :fuzzy-match fuzzy
                   :mode-line mode-line
                   :help-message help-message
-                  :action action-fn))
+                  :action action-fn
+                  :volatile volatile))
            (src-1 (helm-build-in-buffer-source name
                     :data get-candidates
                     :filtered-candidate-transformer fc-transformer
@@ -492,10 +495,7 @@ that use `helm-comp-read' See `helm-M-x' for example."
                     :action action-fn))
            (src-list (list src-hist
                            (if candidates-in-buffer
-                               src-1
-                             (if volatile
-                                 (append src '((volatile)))
-                               src))))
+                               src-1 src)))
            (helm-execute-action-at-once-if-one exec-when-only-one)
            (helm-quit-if-no-candidate quit-when-no-cand)
            result)
@@ -822,6 +822,11 @@ Keys description:
   ;; so always use 'confirm.
   (when (eq must-match 'confirm-after-completion)
     (setq must-match 'confirm))
+  (mapc (lambda (hook)
+          (add-hook 'helm-after-update-hook hook))
+        '(helm-ff-move-to-first-real-candidate
+          helm-ff-update-when-only-one-matched
+          helm-ff-auto-expand-to-home-or-root))
   (let* ((action-fn `(("Sole action (Identity)"
                        . (lambda (candidate)
                            (if ,marked-candidates
@@ -890,6 +895,7 @@ Keys description:
              :persistent-action persistent-action
              :persistent-help persistent-help
              :volatile t
+             :cleanup 'helm-find-files-cleanup
              :nomark nomark
              :action action-fn)))
          ;; Helm result.

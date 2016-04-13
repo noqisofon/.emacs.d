@@ -1,6 +1,6 @@
 ;;; helm-buffers.el --- helm support for buffers. -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2015 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -516,7 +516,7 @@ i.e same color."
   (let ((regexp-list (cl-loop with pattern = helm-pattern
                               for p in (split-string pattern)
                               unless (string-match
-                                      "\\`\\(\\*\\)\\|\\(/\\)\\|\\(@\\)" p)
+                                      "\\`\\(\\*\\|/\\|@\\)" p)
                               collect p)))
     (if regexp-list
         (cl-loop for re in regexp-list
