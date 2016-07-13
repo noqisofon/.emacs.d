@@ -1,6 +1,6 @@
-;;; 000-auto-complete.el ---                         -*- lexical-binding: t; -*-
+;;; 000-editor-config.el ---                         -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2015  ned rihine
+;; Copyright (C) 2016  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -23,17 +23,9 @@
 ;; 
 
 ;;; Code:
+(require-if-exists editorconfig)
 
-;; auto-complete を自動で始まらないようにします？
-(setq ac-auto-start nil)
+(editorconfig-mode 1)
 
-(require-if-exists auto-complete)
-(require-if-exists auto-complete-config)
-
-;; (global-auto-complete-mode t)
-;; (ac-config-default)
-
-(add-to-list 'ac-dictionary-directories "~/.emacs.d/dict/auto-complete")
-
-(provide '000-auto-complete)
-;;; 000-auto-complete.el ends here
+(provide '001-editor-config)
+;;; 000-editor-config.el ends here

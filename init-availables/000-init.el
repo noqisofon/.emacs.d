@@ -2,7 +2,7 @@
 
 ;;; 000-init.el --- 
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2014-2016  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -31,6 +31,7 @@
 (load "001-package")
 (load "001-recent")
 (load "001-session")
+(load "001-editor-config")
 
 (load "002-emmet")
 (load "002-flycheck")

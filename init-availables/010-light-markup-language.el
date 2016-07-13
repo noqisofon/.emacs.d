@@ -8,3 +8,4 @@
 (require '010-sass)
 (require '010-sgml)
 (require '010-yaml)
+(require '010-jade)
