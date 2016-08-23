@@ -1,4 +1,4 @@
-;;; 040-fsharp.el ---                                -*- lexical-binding: t; -*-
+;;; 040-nim.el ---                                   -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2016  ned rihine
 
@@ -23,14 +23,12 @@
 ;; 
 
 ;;; Code:
-(setq inferior-fsharp-program "/usr/bin/fsharpi")
-(setq fsharp-compiler "/usr/bin/fsharpc")
+(require-if-exists nim-mode)
 
-(setq-default fsharp-indent-offset 2)
+;; elm モード
+(push '("\\.nim$" . nim-mode) auto-mode-alist)
 
-(lazyload (fsharp-mode) "fsharp-mode")
-;; F# モード。
-(push '("\\.fsx$" . fsharp-mode) auto-mode-alist)
 
-(provide '040-fsharp)
-;;; 040-fsharp.el ends here
+
+(provide '040-nim)
+;;; 040-nim.el ends here

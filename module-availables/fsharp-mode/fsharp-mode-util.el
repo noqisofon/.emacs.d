@@ -1,6 +1,6 @@
-;;; fsharp-mode-util.el --- Support for F# interactive
+;;; fsharp-mode-util.el --- utility functions
 
-;; Copyright (C) 1997 INRIA
+;; Copyright (C) 2015 Robin Neatherway
 
 ;; Author: 2015 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway <robin.neatherway@gmail.com>
@@ -30,8 +30,9 @@
   (case system-type
     ((windows-nt cygwin msdos) nil)
     (otherwise t))
-  "Whether the .NET runtime in use is mono. Defaults to `nil' for
-  Microsoft platforms (including Cygwin), `t' for all *nix.")
+  "Whether the .NET runtime in use is mono.
+Defaults to nil for Microsoft platforms (including Cygwin), t
+for all *nix.")
 
 (defun fsharp-mode--program-files-x86 ()
   (file-name-as-directory

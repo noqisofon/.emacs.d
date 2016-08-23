@@ -37,7 +37,9 @@
 
 (with-no-warnings (require 'cl))
 (require 'fsharp-mode-completion)
+(require 'flycheck)
 
+(declare-function fsharp-mode "fsharp-mode.el")
 (defvar fsharp-doc-idle-delay 0.5
   "The number of seconds to wait for input idle before showing a tooltip.")
 
@@ -67,63 +69,53 @@
   (unless fsharp-doc-timer
     (setq fsharp-doc-timer
           (run-with-idle-timer fsharp-doc-idle-delay t
-                               'fsharp-doc-show-tooltip))))
+                               'fsharp-doc--request-info))))
 
 (defun fsharp-doc-reset-timer ()
   (when fsharp-doc-timer
     (cancel-timer fsharp-doc-timer)
     (setq fsharp-doc-timer nil)))
 
-;;; ----------------------------------------------------------------------------
+(defvar fsharp-doc-buffer-name "* fsharp-doc-buffer *")
+(defun fsharp-get-fontification-buffer ()
+  (let ((buffer (get-buffer fsharp-doc-buffer-name)))
+    (if (buffer-live-p buffer)
+        buffer
+      (with-current-buffer (generate-new-buffer fsharp-doc-buffer-name)
+        (ignore-errors
+          (let ((fsharp-mode-hook nil))
+            (fsharp-mode)))
+        (current-buffer)))))
 
-(defun fsharp-doc/format-for-minibuffer (str)
-  "Parse the result from the F# process."
-  (destructuring-bind (x &rest xs) (split-string str "[\r\n]")
-    (let ((line (if (string-match-p "^Multiple" x) (car-safe xs) x))
-          (name (fsharp-doc-extract-full-name str)))
-      (fsharp-doc-tidy-result
-         (cond
-          ;; Don't fully-qualify let-bindings.
-          ((string-match-p "^val" line)
-           line)
-
-          ;; Extract type identifier.
-          (name
-           (fsharp-doc-replace-identifier line name))
-
-          (t
-           line))))))
-
-(defun fsharp-doc-extract-full-name (str)
-  (when (string-match "Full name: \\(.*\\)$" str)
-    (match-string 1 str)))
-
-(defun fsharp-doc-replace-identifier (str fullname)
-  (replace-regexp-in-string
-   "^\\w+ \\(public \\|private \\|internal \\)?\\(.*?\\) "
-   fullname str 'fixcase "\2" 2))
-
-(defun fsharp-doc-tidy-result (str)
-  (replace-regexp-in-string "[ ]*=[ ]*" "" str))
+(defun fsharp-fontify-string (str)
+  (with-current-buffer (fsharp-get-fontification-buffer)
+    (delete-region (point-min) (point-max))
+    (font-lock-fontify-region (point) (progn (insert str ";") (point)))
+    (buffer-substring (point-min) (1- (point-max)))))
 
 ;;; ----------------------------------------------------------------------------
 
 (defvar fsharp-doc-prevpoint nil)
 
-(defun fsharp-doc-show-tooltip ()
-  "Show tooltip info in the minibuffer.
-If there is an error or warning at point, show the error text.
-Otherwise, request a tooltip from the completion process."
+(defun fsharp-doc--request-info ()
+  "Send a request for tooltip and usage information unless at an error."
   (interactive)
-  (when (and fsharp-doc-mode (thing-at-point 'symbol))
-    (unless (or (equal (point) fsharp-doc-prevpoint)
-                (not (eq fsharp-ac-status 'idle))
-                executing-kbd-macro
-                (fsharp-ac/overlay-at (point))
-                (active-minibuffer-window)
-                cursor-in-echo-area)
-      (setq fsharp-doc-prevpoint (point))
-      (fsharp-ac/show-typesig-at-point t))))
+  (let ((in-usage-overlay (fsharp-ac/usage-overlay-at (point))))
+    (unless in-usage-overlay
+      (fsharp-ac--clear-symbol-uses))
+    (when (and fsharp-doc-mode
+               (thing-at-point 'symbol)
+               (not (eq (char-after) ? )))
+      (unless (or (equal (point) fsharp-doc-prevpoint)
+                  (not (eq fsharp-ac-status 'idle))
+                  executing-kbd-macro
+                  (flycheck-overlay-errors-at (point))
+                  (active-minibuffer-window)
+                  cursor-in-echo-area)
+        (setq fsharp-doc-prevpoint (point))
+        (fsharp-ac/show-typesig-at-point t)
+        (unless in-usage-overlay
+          (fsharp-ac/symboluse-at-point))))))
 
 (provide 'fsharp-doc)
 

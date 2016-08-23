@@ -7,7 +7,7 @@
 ;;         2012-2014 Robin Neatherway <robin.neatherway@gmail.com>
 ;; Maintainer: Robin Neatherway
 ;; Keywords: languages
-;; Version: 1.5.2
+;; Version: 1.9.1
 
 ;; This file is not part of GNU Emacs.
 
@@ -27,11 +27,13 @@
 ;; Boston, MA 02110-1301, USA.
 
 (require 'fsharp-mode-completion)
+(require 'flycheck-fsharp)
 (require 'fsharp-doc)
 (require 'inf-fsharp-mode)
 (require 'fsharp-mode-util)
 (require 'compile)
 (require 'dash)
+(require 'fsharp-mode-indent-smie)
 
 ;;; Compilation
 
@@ -69,6 +71,7 @@
   (define-key fsharp-mode-map "\C-cx" 'fsharp-run-executable-file)
   (define-key fsharp-mode-map "\M-\C-x" 'fsharp-eval-phrase)
   (define-key fsharp-mode-map "\C-c\C-e" 'fsharp-eval-phrase)
+  (define-key fsharp-mode-map "\C-x\C-e" 'fsharp-eval-phrase)
   (define-key fsharp-mode-map "\C-c\C-r" 'fsharp-eval-region)
   (define-key fsharp-mode-map "\C-c\C-f" 'fsharp-load-buffer-file)
   (define-key fsharp-mode-map "\C-c\C-s" 'fsharp-show-subshell)
@@ -82,9 +85,6 @@
 
   (define-key fsharp-mode-map "\C-m"      'fsharp-newline-and-indent)
   (define-key fsharp-mode-map "\C-c:"     'fsharp-guess-indent-offset)
-  (define-key fsharp-mode-map [delete]    'fsharp-electric-delete)
-  (define-key fsharp-mode-map [backspace] 'fsharp-electric-backspace)
-  (define-key fsharp-mode-map (kbd ".") 'fsharp-ac/electric-dot)
 
   (define-key fsharp-mode-map (kbd "C-c <up>") 'fsharp-goto-block-up)
 
@@ -96,6 +96,7 @@
   (define-key fsharp-mode-map (kbd "M-,")     'fsharp-ac/pop-gotodefn-stack)
   (define-key fsharp-mode-map (kbd "C-c C-q") 'fsharp-ac/stop-process)
   (define-key fsharp-mode-map (kbd "C-c C-.") 'fsharp-ac/complete-at-point)
+  (define-key fsharp-mode-map (kbd "C-c C-u") 'fsharp-ac/symboluse-at-point)
 
   (unless running-xemacs
     (let ((map (make-sparse-keymap "fsharp"))
@@ -191,6 +192,10 @@
   (require 'fsharp-doc)
   (require 'fsharp-mode-completion)
 
+  (require 'company)
+
+  (fsharp-mode-indent-smie-setup)
+
   (use-local-map fsharp-mode-map)
 
   (mapc 'make-local-variable
@@ -208,12 +213,13 @@
           underline-minimum-offset
           compile-command
           syntax-propertize-function
-
-          ac-sources
-          ac-auto-start
-          ac-use-comphist
-          ac-auto-show-menu
-          popup-tip-max-width
+          company-backends
+          company-auto-complete
+          company-auto-complete-chars
+          company-idle-delay
+          company-minimum-prefix-length
+          company-require-match
+          company-tooltip-align-annotations
           fsharp-ac-last-parsed-ticks
           fsharp-ac-errors))
 
@@ -231,23 +237,32 @@
         comment-indent-function  'fsharp-comment-indent-function
         indent-region-function   'fsharp-indent-region
         indent-line-function     'fsharp-indent-line
-        underline-minimum-offset  2
+        underline-minimum-offset  4
 
         paragraph-ignore-fill-prefix   t
         add-log-current-defun-function 'fsharp-current-defun
         fsharp-last-noncomment-pos     nil
         fsharp-last-comment-start      (make-marker)
-        fsharp-last-comment-end        (make-marker)
-
-        )
+        fsharp-last-comment-end        (make-marker))
 
   ; Syntax highlighting
   (setq font-lock-defaults '(fsharp-font-lock-keywords))
   (setq syntax-propertize-function 'fsharp--syntax-propertize-function)
-  ;; Error navigation
-  (setq next-error-function 'fsharp-ac/next-error)
-  (add-hook 'next-error-hook 'fsharp-ac/show-error-at-point nil t)
-  (add-hook 'post-command-hook 'fsharp-ac/show-error-at-point nil t)
+  ; Some reasonable defaults for company mode
+  (add-to-list 'company-backends 'fsharp-ac/company-backend)
+  (setq company-auto-complete 't)
+  (setq company-auto-complete-chars ".")
+  (setq company-idle-delay 0.03)
+  (setq company-minimum-prefix-length 0)
+  (setq company-require-match 'nil)
+  (setq company-tooltip-align-annotations 't)
+
+  ;; In Emacs 24.4 onwards, tell electric-indent-mode that fsharp-mode
+  ;; has no deterministic indentation.
+  (when (boundp 'electric-indent-inhibit) (setq electric-indent-inhibit t))
+  (when (and (display-graphic-p)
+             (boundp 'company-quickhelp-mode)) ; not supported on ttys
+    (company-quickhelp-mode 1))
 
   (let ((file (buffer-file-name)))
     (when file
@@ -255,6 +270,7 @@
       (fsharp-mode--load-with-binding file)))
 
   (turn-on-fsharp-doc-mode)
+  (flycheck-mode 1)
   (run-hooks 'fsharp-mode-hook))
 
 (defun fsharp-mode--load-with-binding (file)
@@ -264,12 +280,7 @@ Otherwise, treat as a stand-alone file."
   (when fsharp-ac-intellisense-enabled
     (or (fsharp-ac/load-project (fsharp-mode/find-fsproj file))
         (fsharp-ac/load-file file))
-    (auto-complete-mode 1)
-    (setq ac-auto-start nil
-          ac-use-comphist nil)
-    (when (and (display-graphic-p)
-               (featurep 'pos-tip))
-      (setq popup-tip-max-width 240))))
+    (company-mode 1)))
 
 (defun fsharp-mode-choose-compile-command (file)
   "Format an appropriate compilation command, depending on several factors:
@@ -286,7 +297,7 @@ Otherwise, treat as a stand-alone file."
     (cond
      (makefile          compile-command)
      (proj              (combine-and-quote-strings (list fsharp-build-command "/nologo" proj)))
-     ((equal ext "fs")  (combine-and-quote-strings (list fsharp-compile-command "--nologo" file)))
+     ((or (equal ext "fs") (equal ext "fsx"))  (combine-and-quote-strings (list fsharp-compile-command "--nologo" file)))
      ((equal ext "fsl") (combine-and-quote-strings (list "fslex" file)))
      ((equal ext "fsy") (combine-and-quote-strings (list "fsyacc" file)))
      (t                 compile-command))))
@@ -318,8 +329,8 @@ Otherwise, treat as a stand-alone file."
       (when (y-or-n-p (concat "Do you want to save \"" name "\" before
 loading it? "))
         (save-buffer)))
-    (save-excursion (fsharp-run-process-if-needed))
-    (save-excursion (fsharp-simple-send inferior-fsharp-buffer-name command))))
+    (fsharp-run-process-if-needed)
+    (fsharp-simple-send inferior-fsharp-buffer-name command)))
 
 (defun fsharp-show-subshell ()
   (interactive)

@@ -95,7 +95,7 @@
 (defvar fsharp-var-pre-form
   (lambda ()
     (save-excursion
-      (re-search-forward "\\(:\\s-*\\w[^)]*\\)?=")
+      (re-search-forward "\\(:\\s-*\\w[^)]*\\)?=" nil t)
       (match-beginning 0))))
 
 (defvar fsharp-fun-pre-form
@@ -126,7 +126,7 @@
 
             ;; F# keywords (3.4)
             "abstract" "and" "as" "assert" "base" "begin"
-            "class" "default" "delegate" "do" "done"
+            "class" "default" "delegate" "do" "do!" "done"
             "downcast" "downto" "elif" "else" "end"
             "exception" "extern" "false" "finally" "for" "fun"
             "function" "global" "if" "in" "inherit" "inline"
@@ -170,7 +170,7 @@
   `(,fsharp-member-function-regexp 1 font-lock-function-name-face)
   `(,fsharp-overload-operator-regexp 1 font-lock-function-name-face)
   ;; `(,fsharp-constructor-regexp 1 font-lock-function-name-face)
-  `("[^:]:\\s-*\\(\\<[A-Za-z_'][^,)=<-]*\\)\\s-*\\(<[^>]*>\\)?"
+  `("[^:]:\\s-*\\(\\<[A-Za-z0-9_' ]*[^ ;\n,)}=<-]\\)\\(<[^>]*>\\)?"
     (1 font-lock-type-face)             ; type annotations
     ;; HACK: font-lock-negation-char-face is usually the same as
     ;; 'default'. use this to prevent generic type arguments from
@@ -223,6 +223,7 @@
             ("\\('\\)\\(?:[^\n\t\r\b\a\f\v\\\\]\\|\\\\[\"'ntrbafv\\\\]\\|\\\\u[0-9A-Fa-f]\\{4\\}\\|\\\\[0-9]\\{3\\}\\)\\('\\)"
              (1 "|") (2 "|")) ; character literal
             ("\\((\\)/" (1 "()"))
+            ("\\(\(\\)\\*[!%&*+-\\./<=>@^|~?]*[\n\t\r\b\a\f\v ]*\)" (1 "()")) ; symbolic operator starting (* is not a comment
             ("\\(/\\)\\*" (1 ".")))
            start end))
 
