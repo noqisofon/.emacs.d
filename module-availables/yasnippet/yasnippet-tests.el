@@ -38,13 +38,16 @@
 (ert-deftest field-navigation ()
   (with-temp-buffer
     (yas-minor-mode 1)
-    (yas-expand-snippet "${1:brother} from another ${2:mother}")
+    (yas-expand-snippet "${1:brother} from ${2:another} ${3:mother}")
     (should (string= (yas--buffer-contents)
                      "brother from another mother"))
-
     (should (looking-at "brother"))
     (ert-simulate-command '(yas-next-field-or-maybe-expand))
+    (should (looking-at "another"))
+    (ert-simulate-command '(yas-next-field-or-maybe-expand))
     (should (looking-at "mother"))
+    (ert-simulate-command '(yas-prev-field))
+    (should (looking-at "another"))
     (ert-simulate-command '(yas-prev-field))
     (should (looking-at "brother"))))
 
@@ -67,6 +70,26 @@
     (yas-mock-insert "bla")
     (should (string= (yas--buffer-contents)
                      "bla from another BLA"))))
+
+(ert-deftest mirror-with-transformation-and-autofill ()
+  "Test interaction of autofill with mirror transforms"
+  (let ((words "one two three four five")
+        filled-words)
+    (with-temp-buffer
+      (c-mode)      ; In `c-mode' filling comments works by narrowing.
+      (yas-minor-mode +1)
+      (setq fill-column 10)
+      (auto-fill-mode +1)
+      (yas-expand-snippet "/* $0\n */")
+      (yas-mock-insert words)
+      (setq filled-words (delete-and-extract-region (point-min) (point-max)))
+      (yas-expand-snippet "/* $1\n */\n$2$2")
+      (should (string= (yas--buffer-contents)
+                       "/* \n */\n"))
+      (yas-mock-insert words)
+      (should (string= (yas--buffer-contents)
+                       (concat filled-words "\n"))))))
+
 
 (ert-deftest primary-field-transformation ()
   (with-temp-buffer
@@ -172,6 +195,88 @@
     (ert-simulate-command '(yas-next-field))
     (ert-simulate-command '(yas-prev-field))
     (should (looking-at "little sibling"))))
+
+(ert-deftest basic-indentation ()
+  (with-temp-buffer
+    (ruby-mode)
+    (yas-minor-mode 1)
+    (set (make-local-variable 'yas-indent-line) 'auto)
+    (set (make-local-variable 'yas-also-auto-indent-first-line) t)
+    (yas-expand-snippet "def ${1:method}${2:(${3:args})}\n$0\nend")
+    ;; Note that empty line is not indented.
+    (should (string= "def method(args)
+
+end" (buffer-string)))
+    (cl-loop repeat 3 do (ert-simulate-command '(yas-next-field)))
+    (yas-mock-insert (make-string (random 5) ?\ )) ; purposedly mess up indentation
+    (yas-expand-snippet "class << ${self}\n  $0\nend")
+    (ert-simulate-command '(yas-next-field))
+    (should (string= "def method(args)
+  class << self
+    
+  end
+end" (buffer-string)))
+    (should (= 4 (current-column)))))
+
+(ert-deftest indentation-markers ()
+  "Test a snippet with indentation markers (`$<')."
+  (with-temp-buffer
+    (ruby-mode)
+    (yas-minor-mode 1)
+    (set (make-local-variable 'yas-indent-line) nil)
+    (yas-expand-snippet "def ${1:method}${2:(${3:args})}\n$>Indent\nNo indent\\$>\nend")
+    (should (string= "def method(args)
+  Indent
+No indent$>
+end" (buffer-string)))))
+
+(ert-deftest single-line-multi-mirror-indentation ()
+  "Make sure not to indent with multiple mirrors per line."
+  ;; See also Github issue #712.
+  (with-temp-buffer
+    (text-mode)
+    (yas-minor-mode 1)
+    (yas-expand-snippet "${1:XXXXX} --------
+$1   ---------------- $1 ----
+$1   ------------------------")
+    (should (string= (yas--buffer-contents) "XXXXX --------
+XXXXX   ---------------- XXXXX ----
+XXXXX   ------------------------"))))
+
+(ert-deftest indent-mirrors-on-update ()
+  "Check that mirrors are always kept indented."
+  (with-temp-buffer
+    (ruby-mode)
+    (yas-minor-mode 1)
+    (yas-expand-snippet "def $1\n$1\nend")
+    (yas-mock-insert "xxx")
+    ;; Assuming 2 space indent.
+    (should (string= "def xxx\n  xxx\nend" (buffer-string)))))
+
+
+(ert-deftest snippet-with-multiline-mirrors-issue-665 ()
+  "In issue 665, a multi-line mirror is attempted."
+  (with-temp-buffer
+    (ruby-mode)
+    (yas-minor-mode 1)
+    (yas-expand-snippet "def initialize(${1:params})\n$2${1:$(
+mapconcat #'(lambda (arg)
+                 (format \"@%s = %s\" arg arg))
+             (split-string yas-text \", \")
+             \"\n\")}\nend")
+    (yas-mock-insert "bla, ble, bli")
+    (ert-simulate-command '(yas-next-field))
+    (let ((expected (mapconcat #'identity
+                               '("@bla = bla"
+                                 ;; assume ruby is always indented to 2 spaces
+                                 "  @ble = ble"
+                                 "  @bli = bli")
+                               "\n")))
+      (should (looking-at expected))
+      (yas-mock-insert "blo")
+      (ert-simulate-command '(yas-prev-field))
+      (ert-simulate-command '(yas-next-field))
+      (should (looking-at (concat "blo" expected))))))
 
 
 ;;; Snippet expansion and character escaping
@@ -402,7 +507,7 @@ TODO: correct this bug!"
            (yas-should-expand '(("foo-barbaz" . "OKfoo-barbazOK"))))
          (let ((yas-key-syntaxes
                 (cons #'(lambda (_start-point)
-                          (unless (looking-back "-")
+                          (unless (eq ?- (char-before))
                             (backward-char)
                             'again))
                       yas-key-syntaxes))
@@ -510,6 +615,24 @@ TODO: correct this bug!"
                                         (ert-fail "yas--load-directory-2 shouldn't be called when snippets have been compiled")))
      (yas-reload-all)
      (yas--basic-jit-loading-1))))
+
+(ert-deftest snippet-load-uuid ()
+  "Test snippets with same uuid override old ones."
+  (yas-saving-variables
+   (yas-define-snippets
+    'text-mode
+    '(("1" "one" "one" nil nil nil nil "C-c 1" "uuid-1")
+      ("2" "two" "two" nil nil nil nil nil "uuid-2")))
+   (with-temp-buffer
+     (text-mode)
+     (yas-minor-mode +1)
+     (should (equal (yas-lookup-snippet "one") "one"))
+     (should (eq (key-binding "\C-c1") 'yas-expand-from-keymap))
+     (yas-define-snippets
+      'text-mode '(("_1" "one!" "won" nil nil nil nil nil "uuid-1")))
+     (should (null (yas-lookup-snippet "one" nil 'noerror)))
+     (should (null (key-binding "\C-c1")))
+     (should (equal (yas-lookup-snippet "won") "one!")))))
 
 (ert-deftest visiting-compiled-snippets ()
   "Test snippet visiting for compiled snippets."
@@ -831,7 +954,7 @@ add the snippets associated with the given mode."
 (defun yas-should-expand (keys-and-expansions)
   (dolist (key-and-expansion keys-and-expansions)
     (yas-exit-all-snippets)
-    (narrow-to-region (point) (point))
+    (erase-buffer)
     (insert (car key-and-expansion))
     (let ((yas-fallback-behavior nil))
       (ert-simulate-command '(yas-expand)))
@@ -845,7 +968,7 @@ add the snippets associated with the given mode."
 (defun yas-should-not-expand (keys)
   (dolist (key keys)
     (yas-exit-all-snippets)
-    (narrow-to-region (point) (point))
+    (erase-buffer)
     (insert key)
     (let ((yas-fallback-behavior nil))
       (ert-simulate-command '(yas-expand)))

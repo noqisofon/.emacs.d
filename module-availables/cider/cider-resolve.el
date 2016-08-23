@@ -1,6 +1,6 @@
 ;;; cider-resolve.el --- Resolve clojure symbols according to current nREPL connection
 
-;; Copyright © 2015-2016 Artur Malabarba
+;; Copyright © 2015-2016 Bozhidar Batsov, Artur Malabarba and CIDER contributors
 
 ;; Author: Artur Malabarba <bruce.connor.am@gmail.com>
 
@@ -19,21 +19,21 @@
 
 ;;; Commentary:
 
-;; The ns cache is a dict of namespaces stored in the connection buffer. This
+;; The ns cache is a dict of namespaces stored in the connection buffer.  This
 ;; file offers functions to easily get information about variables from this
 ;; cache, given the variable's name and the file's namespace.  This
 ;; functionality is similar to that offered by the `cider-var-info' function
-;; (and others). The difference is that all functions in this file operate
+;; (and others).  The difference is that all functions in this file operate
 ;; without contacting the server (they still rely on an active connection
 ;; buffer, but no messages are actually exchanged).
 
 ;; For this reason, the functions here are well suited for very
 ;; performance-sentitive operations, such as font-locking or
-;; indentation. Meanwhile, operations like code-jumping are better off
+;; indentation.  Meanwhile, operations like code-jumping are better off
 ;; communicating with the middleware, just in the off chance that the cache is
 ;; outdated.
 
-;; Below is a typical entry on this cache dict. Note that clojure.core symbols
+;; Below is a typical entry on this cache dict.  Note that clojure.core symbols
 ;; are excluded from the refers to save space.
 
 ;; "cider.nrepl.middleware.track-state"
@@ -65,7 +65,7 @@
 ;;; Code:
 
 (require 'cider-client)
-(require 'nrepl-client)
+(require 'nrepl-dict)
 (require 'cider-util)
 
 (defvar cider-repl-ns-cache)

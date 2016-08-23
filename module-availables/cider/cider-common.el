@@ -1,6 +1,6 @@
 ;;; cider-common.el --- Common use functions         -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2015-2016  Artur Malabarba
+;; Copyright © 2015-2016  Artur Malabarba
 
 ;; Author: Artur Malabarba <bruce.connor.am@gmail.com>
 
@@ -25,8 +25,9 @@
 ;;; Code:
 
 (require 'cider-compat)
-(require 'nrepl-client)
+(require 'nrepl-dict)
 (require 'cider-util)
+(require 'tramp)
 
 (defcustom cider-prompt-for-symbol t
   "Controls when to prompt for symbol when a command requires one.
@@ -42,9 +43,16 @@ prompt if that throws an error."
   :package-version '(cider . "0.9.0"))
 
 (defun cider--should-prompt-for-symbol (&optional invert)
+  "Return the value of the variable `cider-prompt-for-symbol'.
+Optionally invert the value, if INVERT is truthy."
   (if invert (not cider-prompt-for-symbol) cider-prompt-for-symbol))
 
 (defun cider-prompt-for-symbol-function (&optional invert)
+  "Prompt for symbol if funcall `cider--should-prompt-for-symbol' is truthy.
+Otherwise attempt to use the symbol at point for the command, and only
+prompt if that throws an error.
+
+INVERT is used to invert the semantics of the function `cider--should-prompt-for-symbol'."
   (if (cider--should-prompt-for-symbol invert)
       #'cider-read-symbol-name
     #'cider-try-symbol-at-point))
@@ -72,19 +80,24 @@ On failure, read a symbol name using PROMPT and call CALLBACK with that."
 
 (declare-function cider-jump-to "cider-interaction")
 
+(defun cider--find-buffer-for-file (file)
+  "Return a buffer visiting FILE.
+If FILE is a temp buffer name, return that buffer."
+  (if (string-prefix-p "*" file)
+      file
+    (and file
+         (not (cider--tooling-file-p file))
+         (cider-find-file file))))
+
 (defun cider--jump-to-loc-from-info (info &optional other-window)
   "Jump to location give by INFO.
 INFO object is returned by `cider-var-info' or `cider-member-info'.
-OTHER-WINDOW is passed to `cider-jamp-to'."
+OTHER-WINDOW is passed to `cider-jump-to'."
   (let* ((line (nrepl-dict-get info "line"))
          (file (nrepl-dict-get info "file"))
          (name (nrepl-dict-get info "name"))
          ;; the filename might actually be a REPL buffer name
-         (buffer (if (string-prefix-p "*" file)
-                     file
-                   (and file
-                        (not (cider--tooling-file-p file))
-                        (cider-find-file file)))))
+         (buffer (cider--find-buffer-for-file file)))
     (if buffer
         (cider-jump-to buffer (if line (cons line nil) name) other-window)
       (error "No source location"))))
@@ -223,6 +236,22 @@ existing file ending with URL has been found."
       (-1 t) ; -
       (16 t) ; empty empty
       (_ nil))))
+
+(defun cider-abbreviate-ns (namespace)
+  "Return a string that abbreviates NAMESPACE."
+  (when namespace
+    (let* ((names (reverse (split-string namespace "\\.")))
+           (lastname (car names)))
+      (concat (mapconcat (lambda (s) (concat (substring s 0 1) "."))
+                         (reverse (cdr names))
+                         "")
+              lastname))))
+
+(defun cider-last-ns-segment (namespace)
+  "Return the last segment of NAMESPACE."
+  (when namespace
+    (car (reverse (split-string namespace "\\.")))))
+
 
 (provide 'cider-common)
 ;;; cider-common.el ends here

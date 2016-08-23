@@ -1,6 +1,6 @@
 ;;; cider-popup.el --- Creating and quitting popup buffers  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2015-2016  Artur Malabarba
+;; Copyright © 2015-2016  Bozhidar Batsov, Artur Malabarba and CIDER contributors
 
 ;; Author: Artur Malabarba <bruce.connor.am@gmail.com>
 
@@ -23,7 +23,6 @@
 
 ;;; Code:
 
-(require 'nrepl-client)
 (require 'cider-compat)
 
 (define-minor-mode cider-popup-buffer-mode
@@ -65,6 +64,8 @@ If SELECT is non-nil, select the BUFFER."
     ;; bound to that).
     (unless (eq window (selected-window))
       ;; Non nil `inhibit-same-window' ensures that current window is not covered
+      ;; Non nil `inhibit-switch-frame' ensures that the other frame is not selected
+      ;; if that's where the buffer is being shown.
       (funcall (if select #'pop-to-buffer #'display-buffer)
                buffer `(nil . ((inhibit-same-window . ,pop-up-windows)
                                (reusable-frames . visible))))))
@@ -103,7 +104,7 @@ and automatically removed when killed."
 
 (defun cider-emit-into-popup-buffer (buffer value &optional face)
   "Emit into BUFFER the provided VALUE optionally using FACE."
-  ;; Long string output renders emacs unresponsive and users might intentionally
+  ;; Long string output renders Emacs unresponsive and users might intentionally
   ;; kill the frozen popup buffer. Therefore, we don't re-create the buffer and
   ;; silently ignore the output.
   (when (buffer-live-p buffer)

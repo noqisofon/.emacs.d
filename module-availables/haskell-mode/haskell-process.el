@@ -86,7 +86,7 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                (apply haskell-process-wrapper-function
                       (list
                        (append (haskell-process-path-to-list haskell-process-path-ghci)
-			       haskell-process-args-ghci)))))
+                               haskell-process-args-ghci)))))
       ('cabal-repl
        (append (list (format "Starting inferior `cabal repl' process using %s ..."
                              haskell-process-path-cabal)
@@ -95,7 +95,7 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                (apply haskell-process-wrapper-function
                       (list
                        (append
-			(haskell-process-path-to-list haskell-process-path-cabal)
+                        (haskell-process-path-to-list haskell-process-path-cabal)
                         (list "repl")
                         haskell-process-args-cabal-repl
                         (let ((target (haskell-session-target session)))
@@ -107,7 +107,7 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                (apply haskell-process-wrapper-function
                       (list
                        (append
-			(haskell-process-path-to-list haskell-process-path-stack)
+                        (haskell-process-path-to-list haskell-process-path-stack)
                         (list "ghci")
                         (let ((target (haskell-session-target session)))
                           (if target (list target) nil))
@@ -137,8 +137,8 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
                        'face '((:weight bold))))
           (haskell-process-log
            (propertize "Process reset.\n"
-                       'face font-lock-comment-face))
-          (run-hook-with-args 'haskell-process-ended-hook process))))))
+                       'face 'font-lock-comment-face))
+          (run-hook-with-args 'haskell-process-ended-functions process))))))
 
 (defun haskell-process-filter (proc response)
   "The filter for the process pipe."
@@ -146,7 +146,7 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
     (cl-loop for line in (split-string response "\n")
              do (haskell-process-log
                  (concat (if (= i 0)
-                             (propertize "<- " 'face font-lock-comment-face)
+                             (propertize "<- " 'face 'font-lock-comment-face)
                            "   ")
                          (propertize line 'face 'haskell-interactive-face-compile-warning)))
              do (setq i (1+ i))))
@@ -155,9 +155,7 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
       (if (haskell-process-cmd (haskell-session-process session))
           (haskell-process-collect session
                                    response
-                                   (haskell-session-process session))
-        (haskell-process-log
-         (replace-regexp-in-string "\4" "" response))))))
+                                   (haskell-session-process session))))))
 
 (defun haskell-process-log (msg)
   "Effective append MSG to the process log (if enabled)."
@@ -166,24 +164,11 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
            (windows (get-buffer-window-list append-to t t))
            move-point-in-windows)
       (with-current-buffer append-to
-        (setq buffer-read-only nil)
-        ;; record in which windows we should keep point at eob.
-        (dolist (window windows)
-          (when (= (window-point window) (point-max))
-            (push window move-point-in-windows)))
-        (let (return-to-position)
-          ;; decide whether we should reset point to return-to-position
-          ;; or leave it at eob.
-          (unless (= (point) (point-max))
-            (setq return-to-position (point))
-            (goto-char (point-max)))
-          (insert "\n" msg "\n")
-          (when return-to-position
-          (goto-char return-to-position)))
-        ;; advance to point-max in windows where it is needed
-        (dolist (window move-point-in-windows)
-          (set-window-point window (point-max)))
-        (setq buffer-read-only t)))))
+        ;; point should follow insertion so that it stays at the end
+        ;; of the buffer
+        (setq-local window-point-insertion-type t)
+        (let ((buffer-read-only nil))
+          (insert msg "\n"))))))
 
 (defun haskell-process-project-by-proc (proc)
   "Find project by process."
@@ -227,13 +212,18 @@ HPTYPE is the result of calling `'haskell-process-type`' function."
   (let ((child (haskell-process-process process)))
     (if (equal 'run (process-status child))
         (let ((out (concat string "\n")))
-          (haskell-process-log
-           (propertize (concat (propertize "-> " 'face font-lock-comment-face)
-                               (propertize string 'face font-lock-string-face))
-                       'face '((:weight bold))))
+          (let ((i 0))
+            (cl-loop for line in (split-string out "\n")
+                     do (unless (string-equal "" line)
+                          (haskell-process-log
+                           (concat (if (= i 0)
+                                       (propertize "-> " 'face 'font-lock-comment-face)
+                                     "   ")
+                                   (propertize line 'face 'font-lock-string-face))))
+                     do (setq i (1+ i))))
           (process-send-string child out))
       (unless (haskell-process-restarting process)
-        (run-hook-with-args 'haskell-process-ended process)))))
+        (run-hook-with-args 'haskell-process-ended-functions process)))))
 
 (defun haskell-process-live-updates (process)
   "Process live updates."
@@ -271,7 +261,7 @@ the response."
             (haskell-command-exec-go cmd))))
     (progn (haskell-process-reset process)
            (haskell-process-set process 'command-queue nil)
-           (run-hook-with-args 'haskell-process-ended process))))
+           (run-hook-with-args 'haskell-process-ended-functions process))))
 
 (defun haskell-process-queue-flushed-p (process)
   "Return t if command queue has been completely processed."
@@ -296,7 +286,7 @@ This uses `accept-process-output' internally."
     (car-safe (haskell-command-state cmd))))
 
 (defun haskell-process-get-repl-completions (process inputstr &optional limit)
-  "Perform `:complete repl ...' query for INPUTSTR using PROCESS.
+  "Query PROCESS with `:complete repl ...' for INPUTSTR.
 Give optional LIMIT arg to limit completion candidates count,
 zero, negative values, and nil means all possible completions.
 Returns NIL when no completions found."
@@ -311,16 +301,20 @@ Returns NIL when no completions found."
     (if (eq 'unknown-command response-status)
         (error
          "GHCi lacks `:complete' support (try installing GHC 7.8+ or ghci-ng)")
-      (let* ((s1 (split-string rawstr "\r?\n" t))
-             (cs (mapcar #'haskell-string-literal-decode (cdr s1)))
-             (h0 (car s1))) ;; "<limit count> <all count> <unused string>"
-        (unless (string-match "\\`\\([0-9]+\\) \\([0-9]+\\) \\(\".*\"\\)\\'" h0)
-          (error "Invalid `:complete' response"))
-        (let ((cnt1 (match-string 1 h0))
-              (h1 (haskell-string-literal-decode (match-string 3 h0))))
-          (unless (= (string-to-number cnt1) (length cs))
-            (error "Lengths inconsistent in `:complete' reponse"))
-          (cons h1 cs))))))
+      (when rawstr
+        ;; parse REPL response if any
+        (let* ((s1 (split-string rawstr "\r?\n" t))
+               (cs (mapcar #'haskell-string-literal-decode (cdr s1)))
+               (h0 (car s1))) ;; "<limit count> <all count> <unused string>"
+          (unless (string-match
+                   "\\`\\([0-9]+\\) \\([0-9]+\\) \\(\".*\"\\)\\'"
+                   h0)
+            (error "Invalid `:complete' response"))
+          (let ((cnt1 (match-string 1 h0))
+                (h1 (haskell-string-literal-decode (match-string 3 h0))))
+            (unless (= (string-to-number cnt1) (length cs))
+              (error "Lengths inconsistent in `:complete' reponse"))
+            (cons h1 cs)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Accessing the process

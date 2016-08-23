@@ -1,11 +1,12 @@
 ;;; cider-mode.el --- Minor mode for REPL interactions -*- lexical-binding: t -*-
 
-;; Copyright © 2012-2016 Tim King, Phil Hagelberg
-;; Copyright © 2013-2016 Bozhidar Batsov, Hugo Duncan, Steve Purcell
+;; Copyright © 2012-2013 Tim King, Phil Hagelberg, Bozhidar Batsov
+;; Copyright © 2013-2016 Bozhidar Batsov, Artur Malabarba and CIDER contributors
 ;;
 ;; Author: Tim King <kingtim@gmail.com>
 ;;         Phil Hagelberg <technomancy@gmail.com>
 ;;         Bozhidar Batsov <bozhidar@batsov.com>
+;;         Artur Malabarba <bruce.connor.am@gmail.com>
 ;;         Hugo Duncan <hugo@hugoduncan.org>
 ;;         Steve Purcell <steve@sanityinc.com>
 
@@ -172,8 +173,109 @@ Returns to the buffer in which the command was invoked."
     (switch-to-buffer origin-buffer)))
 
 
-;;; The minor mode
-(defvar cider-mode-map
+;;; The menu-bar
+(defconst cider-mode-menu
+  `("CIDER"
+    ["Start a REPL" cider-jack-in
+     :help "Starts an nREPL server (with lein, boot, or maven) and connects a REPL to it."]
+    ["Connect to a REPL" cider-connect
+     :help "Connects to a REPL that's already running."]
+    ["Quit" cider-quit :active cider-connections]
+    ["Restart" cider-restart :active cider-connections]
+    ("Clojurescript"
+     ["Start a Clojure REPL, and a ClojureScript REPL" cider-jack-in-clojurescript
+      :help "Starts an nREPL server, connects a Clojure REPL to it, and then a ClojureScript REPL.
+Configure `cider-cljs-lein-repl' to change the ClojureScript REPL to use."]
+     ["Create a ClojureScript REPL from a Clojure REPL" cider-create-sibling-cljs-repl]
+     ["Configure the ClojureScript REPL to use" (customize-variable 'cider-cljs-lein-repl)])
+    "--"
+    ["Connection info" cider-display-connection-info
+     :active cider-connections]
+    ["Rotate default connection" cider-rotate-default-connection
+     :active (cdr cider-connections)]
+    ["Select any CIDER buffer" cider-selector]
+    "--"
+    ["Configure CIDER" (customize-group 'cider)]
+    "--"
+    ["A sip of CIDER" cider-drink-a-sip]
+    ["View manual online" cider-view-manual]
+    ["View refcard online" cider-view-refcard]
+    ["Report a bug" cider-report-bug]
+    ["Version info" cider-version]
+    "--"
+    ["Close ancillary buffers" cider-close-ancillary-buffers
+     :active (seq-remove #'null cider-ancillary-buffers)]
+    ("nREPL" :active cider-connections
+     ["Describe session" cider-describe-nrepl-session]
+     ["Close session" cider-close-nrepl-session]))
+  "Menu for CIDER mode")
+
+(defconst cider-mode-eval-menu
+  '("CIDER Eval" :visible cider-connections
+    ["Eval top-level sexp" cider-eval-defun-at-point]
+    ["Eval current sexp" cider-eval-sexp-at-point]
+    ["Eval last sexp" cider-eval-last-sexp]
+    ["Eval selected region" cider-eval-region]
+    ["Eval ns form" cider-eval-ns-form]
+    "--"
+    ["Interrupt evaluation" cider-interrupt]
+    "--"
+    ["Eval last sexp and insert" cider-eval-print-last-sexp
+     :keys "\\[universal-argument] \\[cider-eval-last-sexp]"]
+    ["Eval last sexp in popup buffer" cider-pprint-eval-last-sexp]
+    ["Eval last sexp and replace" cider-eval-last-sexp-and-replace]
+    ["Eval last sexp to REPL" cider-eval-last-sexp-to-repl]
+    ["Insert last sexp in REPL" cider-insert-last-sexp-in-repl]
+    ["Eval top-level sexp to comment" cider-eval-defun-to-comment]
+    "--"
+    ["Load this buffer" cider-load-buffer]
+    ["Load another file" cider-load-file]
+    ["Load all project files" cider-load-all-project-ns]
+    ["Refresh loaded code" cider-refresh]
+    ["Run project (-main function)" cider-run])
+  "Menu for CIDER mode eval commands.")
+
+(defconst cider-mode-interactions-menu
+  `("CIDER Interactions" :visible cider-connections
+    ["Complete symbol" complete-symbol]
+    "--"
+    ("REPL"
+     ["Set REPL to this ns" cider-repl-set-ns]
+     ["Switch to REPL" cider-switch-to-repl-buffer]
+     ["REPL Pretty Print" cider-repl-toggle-pretty-printing
+      :style toggle :selected cider-repl-use-pretty-printing]
+     ["Clear latest output" cider-find-and-clear-repl-output]
+     ["Clear all output" (cider-find-and-clear-repl-output t)
+      :keys "\\[universal-argument] \\[cider-find-and-clear-repl-output]"]
+     "--"
+     ["Configure the REPL" (customize-group 'cider-repl)])
+    ,cider-doc-menu
+    ("Find (jump to)"
+     ["Find definition" cider-find-var]
+     ["Find resource" cider-find-resource]
+     ["Go back" cider-pop-back])
+    ("Macroexpand"
+     ["Macroexpand-1" cider-macroexpand-1]
+     ["Macroexpand-all" cider-macroexpand-all])
+    ,cider-test-menu
+    ("Debug"
+     ["Inspect" cider-inspect]
+     ["Toggle var tracing" cider-toggle-trace-var]
+     ["Toggle ns tracing" cider-toggle-trace-ns]
+     "--"
+     ["Debug top-level form" cider-debug-defun-at-point
+      :keys "\\[universal-argument] \\[cider-eval-defun-at-point]"]
+     ["List instrumented defs" cider-browse-instrumented-defs]
+     "--"
+     ["Configure the Debugger" (customize-group 'cider-debug)])
+    ("Browse"
+     ["Browse namespace" cider-browse-ns]
+     ["Browse all namespaces" cider-browse-ns-all]
+     ["Browse classpath" cider-classpath]
+     ["Browse classpath entry" cider-open-classpath-entry]))
+  "Menu for CIDER interactions.")
+
+(defconst cider-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-d") 'cider-doc-map)
     (define-key map (kbd "M-.") #'cider-find-var)
@@ -185,14 +287,12 @@ Returns to the buffer in which the command was invoked."
     (define-key map (kbd "C-c C-c") #'cider-eval-defun-at-point)
     (define-key map (kbd "C-x C-e") #'cider-eval-last-sexp)
     (define-key map (kbd "C-c C-e") #'cider-eval-last-sexp)
-    (define-key map (kbd "C-c C-w") #'cider-eval-last-sexp-and-replace)
+    (define-key map (kbd "C-c C-v") 'cider-eval-commands-map)
     (define-key map (kbd "C-c M-;") #'cider-eval-defun-to-comment)
     (define-key map (kbd "C-c M-e") #'cider-eval-last-sexp-to-repl)
     (define-key map (kbd "C-c M-p") #'cider-insert-last-sexp-in-repl)
     (define-key map (kbd "C-c C-p") #'cider-pprint-eval-last-sexp)
     (define-key map (kbd "C-c C-f") #'cider-pprint-eval-defun-at-point)
-    (define-key map (kbd "C-c C-r") #'cider-eval-region)
-    (define-key map (kbd "C-c C-n") #'cider-eval-ns-form)
     (define-key map (kbd "C-c M-:") #'cider-read-and-eval)
     (define-key map (kbd "C-c C-u") #'cider-undef)
     (define-key map (kbd "C-c C-m") #'cider-macroexpand-1)
@@ -214,70 +314,33 @@ Returns to the buffer in which the command was invoked."
     (define-key map (kbd "C-c M-d") #'cider-display-connection-info)
     (define-key map (kbd "C-c C-x") #'cider-refresh)
     (define-key map (kbd "C-c C-q") #'cider-quit)
-    (easy-menu-define cider-mode-menu map
-      "Menu for CIDER mode"
-      `("CIDER"
-        ["Complete symbol" complete-symbol]
-        "--"
-        ,cider-doc-menu
-        "--"
-        ("Eval"
-         ["Eval top-level sexp at point" cider-eval-defun-at-point]
-         ["Eval last sexp" cider-eval-last-sexp]
-         ["Eval last sexp in popup buffer" cider-pprint-eval-last-sexp]
-         ["Eval last sexp to REPL buffer" cider-eval-last-sexp-to-repl]
-         ["Eval last sexp and replace" cider-eval-last-sexp-and-replace]
-         ["Eval top-level sexp to comment" cider-eval-defun-to-comment]
-         ["Eval region" cider-eval-region]
-         ["Eval ns form" cider-eval-ns-form]
-         ["Insert last sexp in REPL" cider-insert-last-sexp-in-repl]
-         "--"
-         ["Load (eval) buffer" cider-load-buffer]
-         ["Load (eval) file" cider-load-file])
-        ("Macroexpand"
-         ["Macroexpand-1" cider-macroexpand-1]
-         ["Macroexpand-all" cider-macroexpand-all])
-        ("Find"
-         ["Find definition" cider-find-var]
-         ["Find resource" cider-find-resource]
-         ["Go back" cider-pop-back])
-        ,cider-test-menu
-        "--"
-        ["Run project (-main function)" cider-run]
-        ["Inspect" cider-inspect]
-        ["Toggle var tracing" cider-toggle-trace-var]
-        ["Toggle ns tracing" cider-toggle-trace-ns]
-        ["Refresh loaded code" cider-refresh]
-        ["Select any CIDER buffer" cider-selector]
-        "--"
-        ["Debug top-level form" cider-debug-defun-at-point]
-        ["List instrumented defs" cider-browse-instrumented-defs]
-        "--"
-        ["Set ns" cider-repl-set-ns]
-        ["Switch to REPL" cider-switch-to-repl-buffer]
-        ["Toggle REPL Pretty Print" cider-repl-toggle-pretty-printing]
-        ["Clear REPL output" cider-find-and-clear-repl-output]
-        "--"
-        ["Browse classpath" cider-classpath]
-        ["Browse namespace" cider-browse-ns]
-        ["Browse all namespaces" cider-browse-ns-all]
-        "--"
-        ("nREPL"
-         ["Describe session" cider-describe-nrepl-session]
-         ["Close session" cider-close-nrepl-session]
-         ["Connection info" cider-display-connection-info]
-         ["Rotate default connection" cider-rotate-default-connection])
-        "--"
-        ["Interrupt evaluation" cider-interrupt]
-        "--"
-        ["Quit" cider-quit]
-        ["Restart" cider-restart]
-        "--"
-        ["A sip of CIDER" cider-drink-a-sip]
-        ["View manual online" cider-open-manual]
-        ["Report a bug" cider-report-bug]
-        ["Version info" cider-version]))
+    (dolist (variable '(cider-mode-interactions-menu
+                        cider-mode-eval-menu
+                        cider-mode-menu))
+      (easy-menu-do-define (intern (format "%s-open" variable))
+                           map
+                           (get variable 'variable-documentation)
+                           (cider--menu-add-help-strings (symbol-value variable))))
     map))
+
+;; This menu works as an easy entry-point into CIDER.  Even if cider.el isn't
+;; loaded yet, this will be shown in Clojure buffers next to the "Clojure"
+;; menu.
+;;;###autoload
+(eval-after-load 'clojure-mode
+  '(easy-menu-define cider-clojure-mode-menu-open clojure-mode-map
+     "Menu for Clojure mode.
+  This is displayed in `clojure-mode' buffers, if `cider-mode' is not active."
+     `("CIDER" :visible (not cider-mode)
+       ["Start a REPL" cider-jack-in
+        :help "Starts an nREPL server (with lein, boot, or maven) and connects a REPL to it."]
+       ["Connect to a REPL" cider-connect
+        :help "Connects to a REPL that's already running."]
+       ["Start a Clojure REPL, and a ClojureScript REPL" cider-jack-in-clojurescript
+        :help "Starts an nREPL server, connects a Clojure REPL to it, and then a ClojureScript REPL.
+  Configure `cider-cljs-lein-repl' to change the ClojureScript REPL to use."]
+       "--"
+       ["View manual online" cider-view-manual])))
 
 ;;; Dynamic indentation
 (defcustom cider-dynamic-indentation t
@@ -324,7 +387,8 @@ that should be font-locked:
    `macro' (default): Any defined macro gets the `font-lock-builtin-face'.
    `function': Any defined function gets the `font-lock-function-face'.
    `var': Any non-local var gets the `font-lock-variable-face'.
-   `deprecated' (default): Any deprecated var gets the `cider-deprecated' face.
+   `deprecated' (default): Any deprecated var gets the `cider-deprecated-face'
+   face.
    `core' (default): Any symbol from clojure.core (face depends on type).
 
 The value can also be t, which means to font-lock as much as possible."
@@ -338,28 +402,26 @@ The value can also be t, which means to font-lock as much as possible."
   :group 'cider
   :package-version '(cider . "0.10.0"))
 
-(defface cider-deprecated
+(defface cider-deprecated-face
   '((((background light)) :background "light goldenrod")
     (((background dark)) :background "#432"))
-  "Faced used on depreacted vars"
+  "Face used on deprecated vars."
   :group 'cider)
 
 (defface cider-instrumented-face
-  '((t :box (:color "#c00" :line-width -1)))
+  '((((type graphic)) :box (:color "#c00" :line-width -1))
+    (t :underline t :background "#800"))
   "Face used to mark code being debugged."
   :group 'cider-debug
   :group 'cider
   :package-version '(cider . "0.10.0"))
 
 (defface cider-traced-face
-  '((t :box (:color "cyan" :line-width -1)))
+  '((((type graphic)) :box (:color "cyan" :line-width -1))
+    (t :underline t :background "#066"))
   "Face used to mark code being traced."
   :group 'cider
   :package-version '(cider . "0.11.0"))
-
-(defconst cider-deprecated-properties
-  '(face cider-deprecated
-         help-echo "This var is deprecated. \\[cider-doc] for version information."))
 
 (defun cider--unless-local-match (value)
   "Return VALUE, unless `match-string' is a local var."
@@ -369,7 +431,7 @@ The value can also be t, which means to font-lock as much as possible."
     value))
 
 (defun cider--compile-font-lock-keywords (symbols-plist core-plist)
-  "Return a list of font-lock rules for the symbols in SYMBOLS-PLIST."
+  "Return a list of font-lock rules for the symbols in SYMBOLS-PLIST and CORE-PLIST."
   (let ((cider-font-lock-dynamically (if (eq cider-font-lock-dynamically t)
                                          '(function var macro core deprecated)
                                        cider-font-lock-dynamically))
@@ -394,7 +456,7 @@ The value can also be t, which means to font-lock as much as possible."
                        ;; we catch that case too.
                        ;; FIXME: This matches values too, not just keys.
                        (when (seq-find (lambda (k) (and (stringp k)
-                                                   (string-match (rx "clojure.tools.trace/traced" eos) k)))
+                                                        (string-match (rx "clojure.tools.trace/traced" eos) k)))
                                        meta)
                          (push sym traced))
                        (when (and do-deprecated (nrepl-dict-get meta "deprecated"))
@@ -421,10 +483,10 @@ The value can also be t, which means to font-lock as much as possible."
              (cider--unless-local-match font-lock-variable-name-face))))
       ,@(when deprecated
           `((,(regexp-opt deprecated 'symbols) 0
-             (cider--unless-local-match cider-deprecated-properties) append)))
+             (cider--unless-local-match 'cider-deprecated-face) append)))
       ,@(when enlightened
           `((,(regexp-opt enlightened 'symbols) 0
-             (cider--unless-local-match 'cider-enlightened) append)))
+             (cider--unless-local-match 'cider-enlightened-face) append)))
       ,@(when instrumented
           `((,(regexp-opt instrumented 'symbols) 0
              (cider--unless-local-match 'cider-instrumented-face) append)))
@@ -537,50 +599,107 @@ before point."
           (add-text-properties (point) sexp-end '(cider-block-dynamic-font-lock t))
         (forward-char 1)
         (forward-sexp 1)
-        (let ((locals (pcase sym
-                        ((or "fn" "def" "") (cider--read-locals-from-arglist))
-                        (_ (cider--read-locals-from-bindings-vector)))))
-          (add-text-properties (point) sexp-end (list 'cider-locals (append locals outer-locals)))
+        (let ((locals (append outer-locals
+                              (pcase sym
+                                ((or "fn" "def" "") (cider--read-locals-from-arglist))
+                                (_ (cider--read-locals-from-bindings-vector))))))
+          (add-text-properties (point) sexp-end (list 'cider-locals locals))
           (clojure-forward-logical-sexp 1)
           (cider--parse-and-apply-locals sexp-end locals)))
       (goto-char sexp-end))))
 
+(defun cider--update-locals-for-region (beg end)
+  "Update the `cider-locals' text property for region from BEG to END."
+  (save-excursion
+    (goto-char beg)
+    ;; If the inside of a `ns' form changed, reparse it from the start.
+    (when (and (not (bobp))
+               (get-text-property (1- (point)) 'cider-block-dynamic-font-lock))
+      (ignore-errors (beginning-of-defun)))
+    (save-excursion
+      ;; Move up until we reach a sexp that encloses the entire region (or
+      ;; a top-level sexp), and set that as the new BEG.
+      (goto-char end)
+      (while (and (or (> (point) beg)
+                      (not (eq (char-after) ?\()))
+                  (condition-case nil
+                      (progn (backward-up-list) t)
+                    (scan-error nil))))
+      (setq beg (min beg (point)))
+      ;; If there are locals above the current sexp, reapply them to the
+      ;; current sexp.
+      (let ((locals-above (when (> beg (point-min))
+                            (get-text-property (1- beg) 'cider-locals))))
+        (condition-case nil
+            (clojure-forward-logical-sexp 1)
+          (error (goto-char end)))
+        (add-text-properties beg (point) `(cider-locals ,locals-above))
+        ;; Extend the region being font-locked to include whole sexps.
+        (setq end (max end (point)))
+        (goto-char beg)
+        (ignore-errors
+          (cider--parse-and-apply-locals end locals-above))))))
+
+(defun cider--docview-as-string (sym info)
+  "Return a string of what would be displayed by `cider-docview-render'."
+  (with-temp-buffer
+    (cider-docview-render (current-buffer) sym info)
+    (goto-char (point-max))
+    (forward-line -1)
+    (replace-regexp-in-string
+     "[`']" "\\\\=\\&"
+     (buffer-substring-no-properties (point-min) (1- (point))))))
+
+(defcustom cider-use-tooltips t
+  "If non-nil, CIDER displays mouse-over tooltips."
+  :group 'cider
+  :type 'boolean
+  :package-version '(cider "0.12.0"))
+
+(defvar cider--debug-mode-response)
+(defvar cider--debug-mode)
+
+(defun cider--help-echo (_ obj pos)
+  "Return the help-echo string for OBJ at POS.
+See \(info \"(elisp) Special Properties\")"
+  (while-no-input
+    (when (and (bufferp obj) (cider-connected-p)
+               cider-use-tooltips (not help-at-pt-display-when-idle))
+      (with-current-buffer obj
+        (ignore-errors
+          (save-excursion
+            (goto-char pos)
+            (when-let ((sym (cider-symbol-at-point)))
+              (if (member sym (get-text-property (point) 'cider-locals))
+                  (concat (format "`%s' is a local" sym)
+                          (when cider--debug-mode
+                            (let* ((locals (nrepl-dict-get cider--debug-mode-response "locals"))
+                                   (local-val (cadr (assoc sym locals))))
+                              (format " with value:\n%s" local-val))))
+                (let* ((info (cider-sync-request:info sym))
+                       (candidates (nrepl-dict-get info "candidates")))
+                  (if candidates
+                      (concat "There were ambiguities resolving this symbol:\n\n"
+                              (mapconcat (lambda (x) (cider--docview-as-string sym x))
+                                         candidates
+                                         (concat "\n\n" (make-string 60 ?-) "\n\n")))
+                    (cider--docview-as-string sym info)))))))))))
+
 (defun cider--wrap-fontify-locals (func)
-  "Return a function that calls FUNC after parsing local variables.
+  "Return a function that will call FUNC after parsing local variables.
 The local variables are stored in a list under the `cider-locals' text
 property."
   (lambda (beg end &rest rest)
     (with-silent-modifications
       (remove-text-properties beg end '(cider-locals nil cider-block-dynamic-font-lock nil))
+      (add-text-properties beg end '(help-echo cider--help-echo))
       (when cider-font-lock-dynamically
-        (save-excursion
-          (goto-char beg)
-          ;; If the inside of a `ns' form changed, reparse it from the start.
-          (when (and (not (bobp))
-                     (get-text-property (1- (point)) 'cider-block-dynamic-font-lock))
-            (ignore-errors (beginning-of-defun)))
-          (let ((locals-above (unless (bobp)
-                                (get-text-property (1- (point)) 'cider-locals))))
-            (save-excursion
-              ;; If there are locals above the current sexp, reapply them to the
-              ;; current sexp.
-              (when (and locals-above
-                         (condition-case nil
-                             (progn (up-list) t)
-                           (scan-error nil)))
-                (add-text-properties beg (point) `(cider-locals ,locals-above)))
-              ;; Extend the region being font-locked to include whole sexps.
-              (goto-char end)
-              (when (condition-case nil
-                        (progn (up-list) t)
-                      (scan-error nil))
-                (setq end (max end (point)))))
-            (ignore-errors
-              (cider--parse-and-apply-locals end locals-above))))))
+        (cider--update-locals-for-region beg end)))
     (apply func beg end rest)))
 
 
-;;; Mode definition
+;;; Minor-mode definition
+(defvar x-gtk-use-system-tooltips)
 
 ;;;###autoload
 (define-minor-mode cider-mode
@@ -602,11 +721,17 @@ property."
         (add-hook 'font-lock-mode-hook #'cider-refresh-dynamic-font-lock nil 'local)
         (setq-local font-lock-fontify-region-function
                     (cider--wrap-fontify-locals font-lock-fontify-region-function))
+        ;; GTK tooltips look bad, and we have no control over the face.
+        (setq-local x-gtk-use-system-tooltips nil)
+        ;; `tooltip' has variable-width by default, which looks terrible.
+        (set-face-attribute 'tooltip nil :inherit 'unspecified)
         (when cider-dynamic-indentation
           (setq-local clojure-get-indent-function #'cider--get-symbol-indent))
+        (setq-local clojure-expected-ns-function #'cider-expected-ns)
         (setq next-error-function #'cider-jump-to-compilation-error))
     (mapc #'kill-local-variable '(completion-at-point-functions
                                   next-error-function
+                                  x-gtk-use-system-tooltips
                                   font-lock-fontify-region-function
                                   clojure-get-indent-function))
     (remove-hook 'font-lock-mode-hook #'cider-refresh-dynamic-font-lock 'local)

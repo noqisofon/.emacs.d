@@ -1,6 +1,6 @@
 ;;; cider-grimoire.el --- Grimoire integration -*- lexical-binding: t -*-
 
-;; Copyright © 2014-2016 Bozhidar Batsov
+;; Copyright © 2014-2016 Bozhidar Batsov and CIDER contributors
 ;;
 ;; Author: Bozhidar Batsov <bozhidar@batsov.com>
 
@@ -30,7 +30,7 @@
 (require 'cider-compat)
 (require 'cider-popup)
 
-(require 'nrepl-client)
+(require 'nrepl-dict)
 
 (require 'url-vars)
 
@@ -53,7 +53,7 @@
       (concat base-url  "search/v0/" ns "/" (cider-grimoire-replace-special name) "/"))))
 
 (defun cider-grimoire-web-lookup (symbol)
-  "Look up the grimoire documentation for SYMBOL."
+  "Open the grimoire documentation for SYMBOL in a web browser."
   (if-let ((var-info (cider-var-info symbol)))
       (let ((name (nrepl-dict-get var-info "name"))
             (ns (nrepl-dict-get var-info "ns")))

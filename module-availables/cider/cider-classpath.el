@@ -1,6 +1,6 @@
 ;;; cider-classpath.el --- Basic Java classpath browser
 
-;; Copyright © 2014-2016 Bozhidar Batsov
+;; Copyright © 2014-2016 Bozhidar Batsov and CIDER contributors
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -28,6 +28,8 @@
 (require 'cider-compat)
 
 (defvar cider-classpath-buffer "*cider-classpath*")
+
+(push cider-classpath-buffer cider-ancillary-buffers)
 
 (defvar cider-classpath-mode-map
   (let ((map (make-sparse-keymap)))
@@ -89,6 +91,7 @@
   "List all classpath entries."
   (interactive)
   (cider-ensure-connected)
+  (cider-ensure-op-supported "classpath")
   (with-current-buffer (cider-popup-buffer cider-classpath-buffer t)
     (cider-classpath-list (current-buffer)
                           (mapcar (lambda (name)
@@ -99,6 +102,8 @@
 (defun cider-open-classpath-entry ()
   "Open a classpath entry."
   (interactive)
+  (cider-ensure-connected)
+  (cider-ensure-op-supported "classpath")
   (when-let ((entry (completing-read "Classpath entries: " (cider-sync-request:classpath))))
     (find-file-other-window entry)))
 

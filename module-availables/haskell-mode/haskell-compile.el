@@ -103,11 +103,9 @@ This is a child of `compilation-mode-map'.")
 This mode provides support for GHC 7.[46]'s compile
 messages. Specifically, also the `-ferror-spans` source location
 format is supported, as well as info-locations within compile
-messages pointing to additional source locations.
-
-See Info node `(haskell-mode)compilation' for more details."
-  (set (make-local-variable 'compilation-error-regexp-alist)
-       haskell-compilation-error-regexp-alist)
+messages pointing to additional source locations."
+  (setq-local compilation-error-regexp-alist
+              haskell-compilation-error-regexp-alist)
 
   (add-hook 'compilation-filter-hook
             'haskell-compilation-filter-hook nil t)

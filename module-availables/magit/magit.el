@@ -16,7 +16,7 @@
 ;;	Rémi Vanicat      <vanicat@debian.org>
 ;;	Yann Hodique      <yann.hodique@gmail.com>
 
-;; Package-Requires: ((emacs "24.4") (async "20150909.2257") (dash "20151021.113") (with-editor "20160408.201") (git-commit "20160425.430") (magit-popup "20160512.328"))
+;; Package-Requires: ((emacs "24.4") (async "20160711.223") (dash "20160820.501") (with-editor "20160812.1457") (git-commit "20160519.950") (magit-popup "20160813.642"))
 ;; Keywords: git tools vc
 ;; Homepage: https://github.com/magit/magit
 
@@ -297,7 +297,7 @@ the maximum depth to look for Git repositories.  If it is 0, then
 only add DIRECTORY itself.  For elements that are strings, the
 value of option `magit-repository-directories-depth' specifies
 the depth."
-  :package-version '(magit . "2.7.1")
+  :package-version '(magit . "2.8.0")
   :group 'magit
   :type '(repeat (choice (cons directory (integer :tag "Depth")) directory)))
 
@@ -324,8 +324,8 @@ of the column.  FORMAT is a function that is called with one
 argument, the repository identification (usually its basename),
 and with `default-directory' bound to the toplevel of its working
 tree.  It has to return a string to be inserted or nil.  PROPS is
-an alist that supports the keys ~:right-align~ and ~:pad-right~."
-  :package-version '(magit . "2.7.1")
+an alist that supports the keys `:right-align' and `:pad-right'."
+  :package-version '(magit . "2.8.0")
   :group 'magit-commands
   :type `(repeat (list :tag "Column"
                        (string   :tag "Header Label")
@@ -868,13 +868,13 @@ Insert a header line with the name and description of the
 current branch.  The description is taken from the Git variable
 `branch.<NAME>.description'; if that is undefined then no header
 line is inserted at all."
-  (-when-let* ((branch (magit-get-current-branch))
-               (desc (magit-get "branch" branch "description"))
-               (desc-lines (split-string desc "\n")))
-    (magit-insert-section (branchdesc branch t)
-      (magit-insert-heading branch ": " (car desc-lines))
-      (insert (mapconcat 'identity (cdr desc-lines) "\n"))
-      (insert "\n\n"))))
+  (let ((branch (magit-get-current-branch)))
+    (--when-let (magit-git-lines
+                 "config" (format "branch.%s.description" branch))
+      (magit-insert-section (branchdesc branch t)
+        (magit-insert-heading branch ": " (car it))
+        (insert (mapconcat 'identity (cdr it) "\n"))
+        (insert "\n\n")))))
 
 (defconst magit-refs-branch-line-re
   (concat "^"
@@ -1281,12 +1281,14 @@ is done using `magit-find-index-noselect'."
           (let ((coding-system-for-write buffer-file-coding-system))
             (with-temp-file index
               (insert-buffer-substring buffer)))
-          (magit-call-git "update-index" "--cacheinfo"
-                          (substring (magit-git-string "ls-files" "-s" file) 0 6)
-                          (magit-git-string "hash-object" "-t" "blob" "-w"
-                                            (concat "--path=" file)
-                                            "--" index)
-                          file)
+          (magit-with-toplevel
+            (magit-call-git "update-index" "--cacheinfo"
+                            (substring (magit-git-string "ls-files" "-s" file)
+                                       0 6)
+                            (magit-git-string "hash-object" "-t" "blob" "-w"
+                                              (concat "--path=" file)
+                                              "--" index)
+                            file))
           (set-buffer-modified-p nil)
           (when magit-wip-after-apply-mode
             (magit-wip-commit-after-apply (list file) " after un-/stage")))
@@ -1918,7 +1920,7 @@ merge.
                      (magit-merge-arguments)
                      current-prefix-arg))
   (magit-merge-assert)
-  (magit-run-git "merge" (if nocommit "--no-commit" "--no-edit") args rev))
+  (magit-run-git-async "merge" (if nocommit "--no-commit" "--no-edit") args rev))
 
 ;;;###autoload
 (defun magit-merge-editmsg (rev &optional args)
@@ -1944,7 +1946,7 @@ inspect the merge and change the commit message.
                      (magit-merge-arguments)))
   (magit-merge-assert)
   (cl-pushnew "--no-ff" args :test #'equal)
-  (magit-run-git "merge" "--no-commit" args rev))
+  (magit-run-git-async "merge" "--no-commit" args rev))
 
 ;;;###autoload
 (defun magit-merge-preview (rev)
@@ -2807,9 +2809,17 @@ Usually this is just its basename."
                ;; If there are no tags, use the date in MELPA format.
                (magit-git-string "show" "--no-patch" "--format=%cd-g%h"
                                  "--date=format:%Y%m%d.%H%M"))))
-    (if (string-match-p "\\`[0-9]" v)
+    (if (and v (string-match-p "\\`[0-9]" v))
         (concat " " v)
       v)))
+
+(defun magit-repolist-column-branch (_id)
+  "Insert the current branch."
+  (magit-get-current-branch))
+
+(defun magit-repolist-column-upstream (_id)
+  "Insert the upstream branch of the current branch."
+  (magit-get-current-branch))
 
 (defun magit-repolist-column-unpulled-from-upstream (_id)
   "Insert number of upstream commits not in the current branch."
@@ -2820,7 +2830,7 @@ Usually this is just its basename."
 (defun magit-repolist-column-unpulled-from-pushremote (_id)
   "Insert number of commits in the push branch but not the current branch."
   (--when-let (magit-get-push-branch)
-    (when (magit-rev-parse-p it)
+    (when (magit-rev-verify it)
       (let ((n (cadr (magit-rev-diff-count "HEAD" it))))
         (propertize (number-to-string n) 'face (if (> n 0) 'bold 'shadow))))))
 
@@ -2833,7 +2843,7 @@ Usually this is just its basename."
 (defun magit-repolist-column-unpushed-to-pushremote (_id)
   "Insert number of commits in the current branch but not its push branch."
   (--when-let (magit-get-push-branch)
-    (when (magit-rev-parse-p it)
+    (when (magit-rev-verify it)
       (let ((n (car (magit-rev-diff-count "HEAD" it))))
         (propertize (number-to-string n) 'face (if (> n 0) 'bold 'shadow))))))
 
@@ -3044,7 +3054,7 @@ like `kill-ring-save' would, instead of behaving as described
 above."
   (interactive)
   (if (use-region-p)
-      (copy-region-as-kill (mark) (point) 'region)
+      (copy-region-as-kill nil nil 'region)
     (-when-let* ((section (magit-current-section))
                  (value (magit-section-value section)))
       (magit-section-case
@@ -3087,7 +3097,7 @@ like `kill-ring-save' would, instead of behaving as described
 above."
   (interactive)
   (if (use-region-p)
-      (copy-region-as-kill (mark) (point) 'region)
+      (copy-region-as-kill nil nil 'region)
     (-when-let (rev (cond ((memq major-mode '(magit-cherry-mode
                                               magit-log-select-mode
                                               magit-reflog-mode
@@ -3192,7 +3202,9 @@ Git, and Emacs in the echo area."
       (setq magit-version 'error)
       (when magit-version
         (push magit-version debug))
-      (message "Cannot determine Magit's version %S" debug))
+      (unless (equal (getenv "TRAVIS") "true")
+        ;; The repository is a sparse clone.
+        (message "Cannot determine Magit's version %S" debug)))
     magit-version))
 
 (defun magit-startup-asserts ()

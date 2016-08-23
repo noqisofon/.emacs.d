@@ -21,11 +21,13 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'haskell-mode)
 (require 'haskell-process)
 (require 'haskell-interactive-mode)
 (require 'haskell-modules)
 (require 'haskell-commands)
 (require 'haskell-session)
+(require 'haskell-utils)
 
 (defun haskell-process-look-config-changes (session)
   "Check whether a cabal configuration file has changed.
@@ -225,10 +227,12 @@ list of modules where missed IDENT was found."
 
 (defun haskell-process-do-cabal (command)
   "Run a Cabal command."
-  (let ((process (haskell-interactive-process)))
+  (let ((process (ignore-errors
+                   (haskell-interactive-process))))
     (cond
-     ((let ((child (haskell-process-process process)))
-        (not (equal 'run (process-status child))))
+     ((or (eq process nil)
+          (let ((child (haskell-process-process process)))
+            (not (equal 'run (process-status child)))))
       (message "Process is not running, so running directly.")
       (shell-command (concat "cabal " command)
                      (get-buffer-create "*haskell-process-log*")

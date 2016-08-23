@@ -54,6 +54,15 @@ If you prefer scrolling line by line, set this value to 1."
   :group 'helm
   :type 'integer)
 
+(defcustom helm-help-full-frame t
+  "Display help window in full frame when non nil.
+
+Even when `nil' probably the same result (full frame)
+can be reach by tweaking `display-buffer-alist' but it is
+much more convenient to use a simple boolean value here."
+  :type 'boolean
+  :group 'helm-help)
+
 
 ;;; Internal vars
 ;;
@@ -67,6 +76,18 @@ If you prefer scrolling line by line, set this value to 1."
 (defvar helm-suspend-update-flag nil)
 (defvar helm-action-buffer "*helm action*"
   "Buffer showing actions.")
+
+
+;;; Compatibility
+;;
+(defun helm-add-face-text-properties (beg end face &optional append object)
+  "Add the face property to the text from START to END.
+It is a compatibility function which behave exactly like
+`add-face-text-property' if available otherwise like `add-text-properties'.
+When only `add-text-properties' is available APPEND is ignored."
+  (if (fboundp 'add-face-text-property)
+      (add-face-text-property beg end face append object)
+      (add-text-properties beg end `(face ,face) object)))
 
 ;;; Macros helper.
 ;;
@@ -110,7 +131,9 @@ If NAME returns nil the pair is skipped.
            do (setq name (funcall name))
            when name
            collect (cons name (cadr i))))
-
+
+;;; Anaphoric macros.
+;;
 (defmacro helm-aif (test-form then-form &rest else-forms)
   "Anaphoric version of `if'.
 Like `if' but set the result of TEST-FORM in a temporary variable called `it'.
@@ -118,6 +141,31 @@ THEN-FORM and ELSE-FORMS are then excuted just like in `if'."
   (declare (indent 2) (debug t))
   `(let ((it ,test-form))
      (if it ,then-form ,@else-forms)))
+
+(defmacro helm-awhile (sexp &rest body)
+  "Anaphoric version of `while'.
+Same usage as `while' except that SEXP is bound to
+a temporary variable called `it' at each turn.
+An implicit nil block is bound to the loop so usage
+of `cl-return' is possible to exit the loop."
+  (declare (indent 1) (debug t))
+  (helm-with-gensyms (flag)
+    `(let ((,flag t))
+       (cl-block nil
+         (while ,flag
+           (helm-aif ,sexp
+               (progn ,@body)
+             (setq ,flag nil)))))))
+
+(defmacro helm-acond (&rest clauses)
+  "Anaphoric version of `cond'."
+  (unless (null clauses)
+    (helm-with-gensyms (sym)
+      (let ((clause1 (car clauses)))
+        `(let ((,sym ,(car clause1)))
+           (helm-aif ,sym
+               (progn ,@(cdr clause1))
+             (helm-acond ,@(cdr clauses))))))))
 
 (defun helm-current-line-contents ()
   "Current line string without properties."
@@ -163,7 +211,7 @@ text to be displayed in BUFNAME."
            (setq helm-suspend-update-flag t)
            (set-buffer (get-buffer-create bufname))
            (switch-to-buffer bufname)
-           (delete-other-windows)
+           (when helm-help-full-frame (delete-other-windows))
            (delete-region (point-min) (point-max))
            (org-mode)
            (save-excursion
@@ -209,28 +257,28 @@ text to be displayed in BUFNAME."
                  "[SPC,C-v,down,next:NextPage  b,M-v,up,prior:PrevPage C-s/r:Isearch q:Quit]"
                  'face 'helm-helper))
         scroll-error-top-bottom)
-    (cl-loop for event = (read-key prompt) do
-             (cl-case event
-               ((?\C-v ? down next) (helm-help-scroll-up helm-scroll-amount))
-               ((?\M-v ?b up prior) (helm-help-scroll-down helm-scroll-amount))
-               (?\C-s (isearch-forward))
-               (?\C-r (isearch-backward))
-               (?\C-a (call-interactively #'move-beginning-of-line))
-               (?\C-e (call-interactively #'move-end-of-line))
-               (?\C-f (call-interactively #'forward-char))
-               (?\C-b (call-interactively #'backward-char))
-               (?\C-n (helm-help-next-line))
-               (?\C-p (helm-help-previous-line))
-               (?\M-a (call-interactively #'backward-sentence))
-               (?\M-e (call-interactively #'forward-sentence))
-               (?\M-f (call-interactively #'forward-word))
-               (?\M-b (call-interactively #'backward-word))
-               (?\C-  (helm-help-toggle-mark))
-               (?\M-w (copy-region-as-kill
-                       (region-beginning) (region-end))
-                      (deactivate-mark))
-               (?q    (cl-return))
-               (t     (ignore))))))
+    (helm-awhile (read-key prompt)
+      (cl-case it
+        ((?\C-v ? down next) (helm-help-scroll-up helm-scroll-amount))
+        ((?\M-v ?b up prior) (helm-help-scroll-down helm-scroll-amount))
+        (?\C-s (isearch-forward))
+        (?\C-r (isearch-backward))
+        (?\C-a (call-interactively #'move-beginning-of-line))
+        (?\C-e (call-interactively #'move-end-of-line))
+        (?\C-f (call-interactively #'forward-char))
+        (?\C-b (call-interactively #'backward-char))
+        (?\C-n (helm-help-next-line))
+        (?\C-p (helm-help-previous-line))
+        (?\M-a (call-interactively #'backward-sentence))
+        (?\M-e (call-interactively #'forward-sentence))
+        (?\M-f (call-interactively #'forward-word))
+        (?\M-b (call-interactively #'backward-word))
+        (?\C-  (helm-help-toggle-mark))
+        (?\M-w (copy-region-as-kill
+                (region-beginning) (region-end))
+               (deactivate-mark))
+        (?q    (cl-return))
+        (t     (ignore))))))
 
 
 ;;; List processing
@@ -296,6 +344,17 @@ Default is `eq'."
                                 thereis (and (stringp i)
                                              (string-match-p re i)))))
            collect i))
+
+(defun helm-boring-directory-p (directory black-list)
+  "Check if one regexp in BLACK-LIST match DIRECTORY."
+  (helm-awhile (helm-basedir (directory-file-name
+                              (expand-file-name directory)))
+    (when (string= it "/") (cl-return nil))
+    (when (cl-loop for r in black-list
+                   thereis (string-match-p
+                            r (directory-file-name directory)))
+      (cl-return t))
+    (setq directory it)))
 
 (defun helm-shadow-entries (seq regexp-list)
   "Put shadow property on entries in SEQ matching a regexp in REGEXP-LIST."
@@ -423,18 +482,18 @@ Add spaces at end if needed to reach WIDTH when STR is shorter than WIDTH."
 
 (defun helm-describe-function (func)
   "FUNC is symbol or string."
-  (describe-function (helm-symbolify func))
-  (message nil))
+  (cl-letf (((symbol-function 'message) #'ignore))
+    (describe-function (helm-symbolify func))))
 
 (defun helm-describe-variable (var)
   "VAR is symbol or string."
-  (describe-variable (helm-symbolify var))
-  (message nil))
+  (cl-letf (((symbol-function 'message) #'ignore))
+    (describe-variable (helm-symbolify var))))
 
 (defun helm-describe-face (face)
-  "VAR is symbol or string."
-  (describe-face (helm-symbolify face))
-  (message nil))
+  "FACE is symbol or string."
+  (cl-letf (((symbol-function 'message) #'ignore))
+    (describe-face (helm-symbolify face))))
 
 (defun helm-find-function (func)
   "FUNC is symbol or string."
@@ -452,6 +511,48 @@ Add spaces at end if needed to reach WIDTH when STR is shorter than WIDTH."
   "CANDIDATE is symbol or string.
 See `kill-new' for argument REPLACE."
   (kill-new (helm-stringify candidate) replace))
+
+
+;;; Modes
+;;
+(defun helm-same-major-mode-p (start-buffer alist)
+  "Decide if current-buffer is related to START-BUFFER.
+Argument ALIST is an alist of associated major modes."
+  ;; START-BUFFER is the current-buffer where we start searching.
+  ;; Determine the major-mode of START-BUFFER as `cur-maj-mode'.
+  ;; Each time the loop go in another buffer we try from this buffer
+  ;; to determine if its `major-mode' is:
+  ;; - same as the `cur-maj-mode'
+  ;; - derived from `cur-maj-mode' and from
+  ;;   START-BUFFER if its mode is derived from the one in START-BUFFER. 
+  ;; - have an assoc entry (major-mode . cur-maj-mode)
+  ;; - have an rassoc entry (cur-maj-mode . major-mode)
+  ;; - check if one of these entries inherit from another one in
+  ;;   `alist'.
+  (let* ((cur-maj-mode  (with-current-buffer start-buffer major-mode))
+         (maj-mode      major-mode)
+         (c-assoc-mode  (assq cur-maj-mode alist))
+         (c-rassoc-mode (rassq cur-maj-mode alist))
+         (o-assoc-mode  (assq major-mode alist))
+         (o-rassoc-mode (rassq major-mode alist))
+         (cdr-c-assoc-mode (cdr c-assoc-mode))
+         (cdr-o-assoc-mode (cdr o-assoc-mode)))
+    (or (eq major-mode cur-maj-mode)
+        (derived-mode-p cur-maj-mode)
+        (with-current-buffer start-buffer
+          (derived-mode-p maj-mode))
+        (or (eq cdr-c-assoc-mode major-mode)
+            (eq (car c-rassoc-mode) major-mode)
+            (eq (cdr (assq cdr-c-assoc-mode alist))
+                major-mode)
+            (eq (car (rassq cdr-c-assoc-mode alist))
+                major-mode))
+        (or (eq cdr-o-assoc-mode cur-maj-mode)
+            (eq (car o-rassoc-mode) cur-maj-mode)
+            (eq (cdr (assq cdr-o-assoc-mode alist))
+                cur-maj-mode)
+            (eq (car (rassq cdr-o-assoc-mode alist))
+                cur-maj-mode)))))
 
 ;;; Files routines
 ;;
@@ -466,10 +567,15 @@ See `kill-new' for argument REPLACE."
 (defun helm-basename (fname &optional ext)
   "Print FNAME  with any  leading directory  components removed.
 If specified, also remove filename extension EXT.
-Arg EXT can be specified as a string with or without dot."
+Arg EXT can be specified as a string with or without dot,
+in this case it should match file-name-extension.
+It can also be non-nil (`t') in this case no checking
+of file-name-extension is done and the extension is removed
+unconditionally."
   (let ((non-essential t))
     (if (and ext (or (string= (file-name-extension fname) ext)
-                     (string= (file-name-extension fname t) ext))
+                     (string= (file-name-extension fname t) ext)
+                     (eq ext t))
              (not (file-directory-p fname)))
         (file-name-sans-extension (file-name-nondirectory fname))
       (file-name-nondirectory (directory-file-name fname)))))
@@ -503,62 +609,65 @@ Useful in dired buffers when there is inserted subdirs."
 
 ;; Same as `vc-directory-exclusion-list'.
 (defvar helm-walk-ignore-directories
-  '("SCCS" "RCS" "CVS" "MCVS" ".svn" ".git" ".hg" ".bzr"
-    "_MTN" "_darcs" "{arch}" ".gvfs"))
+  '("SCCS/" "RCS/" "CVS/" "MCVS/" ".svn/" ".git/" ".hg/" ".bzr/"
+    "_MTN/" "_darcs/" "{arch}/" ".gvfs/"))
+
+(defsubst helm--dir-file-name (file dir)
+  (expand-file-name
+   (substring file 0 (1- (length file))) dir))
+
+(defsubst helm--dir-name-p (str)
+  (char-equal (aref str (1- (length str))) ?/))
 
 (cl-defun helm-walk-directory (directory &key (path 'basename)
-                                           (directories t)
-                                           match skip-subdirs)
+                                         directories
+                                         match skip-subdirs)
   "Walk through DIRECTORY tree.
+
 Argument PATH can be one of basename, relative, full, or a function
 called on file name, default to basename.
+
 Argument DIRECTORIES when non--nil (default) return also directories names,
-otherwise skip directories names.
-Argument MATCH can be a predicate or a regexp.
-Argument SKIP-SUBDIRS when non--nil will skip `helm-walk-ignore-directories'
-unless it is given as a list of directories, in this case this list will be used
+otherwise skip directories names, with a value of 'only returns
+only subdirectories, i.e files are skipped.
+
+Argument MATCH is a regexp matching files or directories.
+
+Argument SKIP-SUBDIRS when `t' will skip `helm-walk-ignore-directories'
+otherwise if it is given as a list of directories, this list will be used
 instead of `helm-walk-ignore-directories'."
-  (let* ((result '())
-         (fn (cl-case path
+  (let ((fn (cl-case path
                (basename 'file-name-nondirectory)
                (relative 'file-relative-name)
                (full     'identity)
-               (t        path))))
+               (t        path)))) ; A function.
+    (setq skip-subdirs (if (listp skip-subdirs)
+                           skip-subdirs
+                           helm-walk-ignore-directories))
     (cl-labels ((ls-rec (dir)
-                  (unless (and skip-subdirs
-                               (member (helm-basename dir)
-                                       (if (listp skip-subdirs)
-                                           skip-subdirs
-                                         helm-walk-ignore-directories)))
-                    (cl-loop with ls = (sort (file-name-all-completions "" dir)
-                                             'string-lessp)
-                          for f in ls
-                          ;; Use `directory-file-name' to remove the final slash.
-                          ;; Needed to avoid infloop on symlinks symlinking
-                          ;; a directory inside it [1].
-                          for file = (directory-file-name
-                                      (expand-file-name f dir))
-                          unless (member f '("./" "../"))
-                          ;; A directory.
-                          if (char-equal (aref f (1- (length f))) ?/)
-                          do (progn (when directories
-                                      (push (funcall fn file) result))
-                                    ;; Don't recurse in symlinks.
-                                    ;; `file-symlink-p' have to be called
-                                    ;; on the directory with its final
-                                    ;; slash removed [1].
-                                    (and (not (file-symlink-p file))
-                                         (ls-rec file)))
-                          else do
-                          (if match
-                              (and (if (functionp match)
-                                       (funcall match f)
-                                     (and (stringp match)
-                                          (string-match match f)))
-                                   (push (funcall fn file) result))
-                            (push (funcall fn file) result))))))
-      (ls-rec directory)
-      (nreverse result))))
+                  (unless (file-symlink-p dir)
+                    (cl-loop for f in (sort (file-name-all-completions "" dir)
+                                            'string-lessp)
+                             unless (member f '("./" "../"))
+                             ;; A directory.
+                             ;; Use `helm--dir-file-name' to remove the final slash.
+                             ;; Needed to avoid infloop on directory symlinks.
+                             if (and (helm--dir-name-p f)
+                                     (helm--dir-file-name f dir))
+                             nconc
+                             (unless (member f skip-subdirs)
+                               (if (and directories
+                                        (or (null match)
+                                            (string-match match f)))
+                                   (nconc (list (concat (funcall fn it) "/"))
+                                          (ls-rec it))
+                                   (ls-rec it)))
+                             ;; A regular file.
+                             else nconc
+                             (when (and (null (eq directories 'only))
+                                        (or (null match) (string-match match f)))
+                               (list (funcall fn (expand-file-name f dir))))))))
+      (ls-rec directory))))
 
 (defun helm-file-expand-wildcards (pattern &optional full)
   "Same as `file-expand-wildcards' but allow recursion.

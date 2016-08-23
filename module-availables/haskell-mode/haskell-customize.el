@@ -104,7 +104,7 @@ when showing type information about symbols."
   :type 'boolean
   :safe 'booleanp)
 
-(defvar haskell-process-end-hook nil
+(defvar haskell-process-ended-functions (list 'haskell-process-prompt-restart)
   "Hook for when the haskell process ends.")
 
 ;;;###autoload
@@ -310,8 +310,19 @@ ambiguous class constraint."
   :type 'boolean
   :group 'haskell-interactive)
 
-(defvar haskell-interactive-prompt "λ> "
-  "The prompt to use.")
+(defcustom haskell-interactive-prompt "λ> "
+  "The prompt to use."
+  :type 'string
+  :group 'haskell-interactive)
+
+(defcustom haskell-interactive-prompt2 (replace-regexp-in-string
+                                        "> $"
+                                        "| "
+                                        haskell-interactive-prompt)
+  "The multi-line prompt to use.
+The default is `haskell-interactive-prompt' with the last > replaced with |."
+  :type 'string
+  :group 'haskell-interactive)
 
 (defcustom haskell-interactive-mode-eval-mode
   nil

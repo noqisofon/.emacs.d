@@ -1,11 +1,12 @@
 ;;; cider-selector.el --- Buffer selection command inspired by SLIME's selector -*- lexical-binding: t -*-
 
-;; Copyright © 2012-2016 Tim King, Phil Hagelberg
-;; Copyright © 2013-2016 Bozhidar Batsov, Hugo Duncan, Steve Purcell
+;; Copyright © 2012-2013 Tim King, Phil Hagelberg, Bozhidar Batsov
+;; Copyright © 2013-2016 Bozhidar Batsov, Artur Malabarba and CIDER contributors
 ;;
 ;; Author: Tim King <kingtim@gmail.com>
 ;;         Phil Hagelberg <technomancy@gmail.com>
 ;;         Bozhidar Batsov <bozhidar@batsov.com>
+;;         Artur Malabarba <bruce.connor.am@gmail.com>
 ;;         Hugo Duncan <hugo@hugoduncan.org>
 ;;         Steve Purcell <steve@sanityinc.com>
 
@@ -32,6 +33,7 @@
 
 (require 'cider-client)
 (require 'cider-interaction)
+(require 'cider-scratch)
 
 (defconst cider-selector-help-buffer "*CIDER Selector Help*"
   "The name of the selector's help buffer.")
@@ -45,7 +47,7 @@ DESCRIPTION is a one-line description of what the key selects.")
   "If non-nil use `switch-to-buffer-other-window'.")
 
 (defun cider--recently-visited-buffer (mode)
-  "Return the most recently visited buffer whose `major-mode' is derived from MODE.
+  "Return the most recently visited buffer, deriving its `major-mode' from MODE.
 Only considers buffers that are not already visible."
   (cl-loop for buffer in (buffer-list)
            when (and (with-current-buffer buffer
