@@ -41,7 +41,7 @@
 ;; handle files ending in '.yml', add something like:
 ;;
 ;;    (require 'yaml-mode)
-;;    (add-to-list 'auto-mode-alist '("\\.yml$" . yaml-mode))
+;;    (add-to-list 'auto-mode-alist '("\\.yml\\'" . yaml-mode))
 ;;
 ;; to your .emacs file.
 ;;
@@ -78,6 +78,7 @@
 (defcustom yaml-indent-offset 2
   "*Amount of offset per level of indentation."
   :type 'integer
+  :safe 'natnump
   :group 'yaml)
 
 (defcustom yaml-backspace-function 'backward-delete-char-untabify
@@ -147,7 +148,7 @@ that key is pressed to begin a block literal."
 (defconst yaml-scalar-context-re
   (concat "\\(?:^\\(?:--- \\)?\\|{\\|\\(?: *[-,] +\\)+\\) *"
           "\\(?:" yaml-bare-scalar-re " *: \\)?")
-  "Regexp indicating the begininng of a scalar context.")
+  "Regexp indicating the beginning of a scalar context.")
 
 (defconst yaml-nested-map-re
   (concat ".*: *\\(?:&.*\\|{ *\\|" yaml-tag-re " *\\)?$")
@@ -431,7 +432,7 @@ cross boundaries of block literals."
   yaml-mode-version)
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.e?ya?ml$" . yaml-mode))
+(add-to-list 'auto-mode-alist '("\\.\\(e?ya?\\|ra\\)ml\\'" . yaml-mode))
 
 (provide 'yaml-mode)
 

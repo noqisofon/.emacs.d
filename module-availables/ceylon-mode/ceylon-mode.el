@@ -1,6 +1,6 @@
 ;;; ceylon-mode.el --- Major mode for editing Ceylon source code
 
-;;; Copyright (C) 2015 Lucas Werkmeister
+;;; Copyright (C) 2015-2016 Lucas Werkmeister
 
 ;; Author: Lucas Werkmeister <mail@lucaswerkmeister.de>
 
@@ -115,13 +115,12 @@
         (setq cur-indent (current-indentation))
         (let* ((start (line-beginning-position))
                (end   (line-end-position))
-               (line (buffer-substring-no-properties start end))
-               (open-parens    (count ?\( line))
-               (close-parens   (count ?\) line))
-               (open-braces    (count ?{  line))
-               (close-braces   (count ?}  line))
-               (open-brackets  (count ?\[ line))
-               (close-brackets (count ?\] line))
+               (open-parens    (how-many "(" start end))
+               (close-parens   (how-many ")" start end))
+               (open-braces    (how-many "{" start end))
+               (close-braces   (how-many "}" start end))
+               (open-brackets  (how-many "\\[" start end))
+               (close-brackets (how-many "\\]" start end))
                (balance (- (+ open-parens open-braces open-brackets)
                            (+ close-parens close-braces close-brackets))))
           (if (looking-at"[ \t]*\\(}\\|)\\|]\\)")

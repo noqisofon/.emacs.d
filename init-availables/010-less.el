@@ -1,4 +1,4 @@
-;;; 040-live-script.el ---                           -*- lexical-binding: t; -*-
+;;; 010-less.el ---                                  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2016  ned rihine
 
@@ -23,15 +23,9 @@
 ;; 
 
 ;;; Code:
-(require-if-exists livescript-mode)
-
-(push '("\\.ls$" . livescript-mode) auto-mode-alist)
+(require-if-exists less-css-mode)
 
 
-(add-hook 'livescript-mode-hook
-          (lambda ()
-            (setq tab-width 2
-                  livescript-tab-width 2)))
 
-(provide '040-live-script)
-;;; 040-live-script.el ends here
+(provide '010-less)
+;;; 010-less.el ends here

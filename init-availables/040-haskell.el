@@ -2,7 +2,7 @@
 
 ;;; 040-haskell.el ---
 
-;; Copyright (C) 2015  ned rihine
+;; Copyright (C) 2015-2016  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,12 +25,14 @@
 ;; 
 
 ;;; Code:
-(push '("\\.hs$" . haskell-mode) auto-mode-alist)
-(push '("\\.lhs$" . literate-haskell-mode) auto-mode-alist)
-(push '("\\.cabel$" . haskell-cabal-mode) auto-mode-alist)
+(push '("\\.hs$"     . haskell-mode) auto-mode-alist)
+(push '("\\.lhs$"    . literate-haskell-mode) auto-mode-alist)
+(push '("\\.cabel$"  . haskell-cabal-mode) auto-mode-alist)
 
-(push '("runghc" . haskell-mode) interpreter-mode-alist)
+(push '("runghc"     . haskell-mode) interpreter-mode-alist)
 (push '("runhaskell" . haskell-mode) interpreter-mode-alist)
+
+(require-if-exists haskell-mode-autoloads)
 
 (lazyload (haskell-mode) "haskell-mode")
 (lazyload (haskell-cabal) "haskell-cabal")
