@@ -1,10 +1,8 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
+;;; 002-eshell.el ---                                -*- lexical-binding: t; -*-
 
-;;; 000-init.el --- 
+;; Copyright (C) 2016  ned rihine
 
-;; Copyright (C) 2014-2016  ned rihine
-
-;; Author: ned rihine <ned.rihine@gmail.com>
+;; Author: ned rihine <rihine@leviatan>
 ;; Keywords: 
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -25,22 +23,11 @@
 ;; 
 
 ;;; Code:
+(let ((emacsclient "emacsclient"))
+  ;; eshell で yaourt -Syua する時に使用する。
+  ;; vim だとうまくいかないため。
+  (setenv "VISUAL" emacsclient)
+  (setenv "EDITOR" emacsclient))
 
-(load "001-input-method")
-(load "001-key-bind")
-(load "001-package")
-(load "001-recent")
-(load "001-session")
-(load "001-editor-config")
-
-(load "002-eshell")
-(load "002-emmet")
-(load "002-flycheck")
-(load "002-eldoc")
-
-(load "010-light-markup-language")
-(load "020-version-control")
-
-(load "040-programing-language")
-
-;;; 000-init.el ends here
+(provide '002-eshell)
+;;; 002-eshell.el ends here

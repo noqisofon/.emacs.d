@@ -37,4 +37,6 @@
 ;; 最近使ったファイルを別のバッファ領域に表示します。
 (define-key global-map (kbd "C-c r") 'recentf-open-files)
 ;;
+;; [zenkaku-hankaku] で入力モードを切り替える。
+;; # んだけど、今現在、デスクトップ側の IM(input method) に割り込まれて使えないｗ
 (global-set-key (kbd "<zenkaku-hankaku>") 'toggle-input-method)

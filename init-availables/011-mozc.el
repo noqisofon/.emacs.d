@@ -25,14 +25,18 @@
 ;; 
 
 ;;; Code:
-(when (require 'mozc)
-  (setq default-input-method "japanese-mozc")
+(require-if-exists mozc
+                   (setq default-input-method "japanese-mozc")
   
-  ;;
-  ;; 変換候補の表示スタイルに候補のリストを入力中文字列の側に表示する 'overlay モードを選択します。
-  ;; 設定できるシンボルには以下の 2 つがあります:
-  ;;
-  ;; - 'overlay
-  ;; - 'echoarea
-  ;;
-  (setq mozc-candidate-style 'overlay))
+                   ;;
+                   ;; 変換候補の表示スタイルに候補のリストを入力中文字列の側に表示する 'overlay モードを選択します。
+                   ;; 設定できるシンボルには以下の 2 つがあります:
+                   ;;
+                   ;; - 'overlay
+                   ;; - 'echoarea
+                   ;;
+                   (setq mozc-candidate-style 'overlay)
+
+                   (add-hook 'mozc-mode-hook
+                             (lambda ()
+                               (define-key mozc-mode-map (kbd "<zenkaku-hankaku>") 'toggle-input-method))))
