@@ -2,7 +2,7 @@
 
 ;;; 000-font.el ---
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2014-2016  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -40,7 +40,7 @@
 (set-frame-font (apply #'font-candidate
                        (mapcar (lambda (font-name)
                                  (generate-font-string font-name 10))
-                               '("Ricty" "Migu 1M" "Migu 2M" "TakaoGothic" "IPAGothic" "MS Gothic"))))
+                               '("Ricty" "Roboto Mono" "Droid Sans Mono" "Migu 1M" "Migu 2M" "TakaoGothic" "IPAGothic" "MS Gothic"))))
 
 (provide '000-font)
 ;;; 000-font.el ends here
