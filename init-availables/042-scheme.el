@@ -25,7 +25,7 @@
 ;; 
 
 ;;; Code:
-(setq scheme-program-name "gsi")
+(setq scheme-program-name "guile")
 
 ;; ruby モード。
 (push '("\\.scm$" . scheme-mode) auto-mode-alist)
@@ -34,27 +34,34 @@
 (lazyload (run-scheme) "run-scheme")
 (require-if-exists scheme-complete)
 
+;; といいたいところなんだけど、quack はなんだかおかしいのでコメントアウト。
+;; (when (not (string= scheme-program-name "csi"))
+;;   ;; csi じゃなかったら quack にします。
+;;   (require-if-exists quack))
+
+(require-if-exists geiser
+                   (setq geiser-default-implementation 'guile))
+
+(add-hook 'scheme-mode-hook (lambda ()
+                              (setq lisp-body-indent 2)
+                              (when (featurep 'scheme-complete)
+                                (make-local-variable 'eldoc-documentation-function)
+                                (setq lisp-indent-function         'scheme-smart-indent-function)
+                                ;;(setq lisp-indent-function         'common-lisp-indent-function)
+                                (setq eldoc-documentation-function 'scheme-get-current-symbol-info)
+                                (eldoc-mode))))
+
 (cond ((string= scheme-program-name "csi")
        (load "043-chicken"))
 
       ((string= scheme-program-name "gosh")
        (load "043-gauche"))
 
+      ((string= scheme-program-name "guile")
+       (load "043-guile"))
+
       ((string= scheme-program-name "gsi")
        (load "043-gambit")))
-
-;; といいたいところなんだけど、quack はなんだかおかしいのでコメントアウト。
-;; (when (not (string= scheme-program-name "csi"))
-;;   ;; csi じゃなかったら quack にします。
-;;   (require-if-exists quack))
-
-(add-hook 'scheme-mode-hook (lambda ()
-                              (setq lisp-body-indent 2)
-                              (when (featurep 'scheme-complete)
-                                (make-local-variable 'eldoc-documentation-function)
-                                (setq lisp-indent-function 'scheme-smart-indent-function)
-                                (setq eldoc-documentation-function 'scheme-get-current-symbol-info)
-                                (eldoc-mode))))
 
 (provide '042-scheme)
 ;;; 042-scheme.el ends here

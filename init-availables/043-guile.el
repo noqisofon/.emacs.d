@@ -1,10 +1,8 @@
-;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; lexical-binding: t; -*-
+;;; 043-guile.el ---                                 -*- lexical-binding: t; -*-
 
-;;; 040-lisp-common.el ---
+;; Copyright (C) 2016  ned rihine
 
-;; Copyright (C) 2014  ned rihine
-
-;; Author: ned rihine <ned.rihine@gmail.com>
+;; Author: ned rihine <rihine@leviatan>
 ;; Keywords: 
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -25,15 +23,9 @@
 ;; 
 
 ;;; Code:
-;; Lisp の括弧内のインデントです。
-(setq lisp-body-indent 2)
 
-(add-hook 'lisp-mode-hook (lambda ()
-                            (set (make-local-variable 'lisp-indent-function)
-                                 'common-lisp-indent-function)))
+(setq scheme-program-name "guile")
 
-(load "042-clojure")
-(load "042-scheme")
 
-(provide '040-lisp-common)
-;;; 040-lisp-common.el ends here
+(provide '043-guile)
+;;; 043-guile.el ends here
