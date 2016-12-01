@@ -23,15 +23,11 @@
 ;; 
 
 ;;; Code:
+(setq  livescript-tab-width 2)
+
 (require-if-exists livescript-mode)
 
 (push '("\\.ls$" . livescript-mode) auto-mode-alist)
-
-
-(add-hook 'livescript-mode-hook
-          (lambda ()
-            (setq tab-width 2
-                  livescript-tab-width 2)))
 
 (provide '040-live-script)
 ;;; 040-live-script.el ends here

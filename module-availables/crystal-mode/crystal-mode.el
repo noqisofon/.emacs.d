@@ -55,7 +55,7 @@
   :group 'languages)
 
 (defconst crystal-block-beg-keywords
-  '("class" "module" "def" "if" "unless" "case" "while" "until" "for" "begin" "do" "macro")
+  '("class" "module" "def" "if" "unless" "case" "while" "until" "for" "begin" "do" "macro" "lib" "enum")
   "Keywords at the beginning of blocks.")
 
 (defconst crystal-block-beg-re
@@ -67,7 +67,7 @@
   "Regexp to match keywords that nest without blocks.")
 
 (defconst crystal-indent-beg-re
-  (concat "^\\(\\s *" (regexp-opt '("class" "module" "def" "macro")) "\\|"
+  (concat "^\\(\\s *" (regexp-opt '("class" "module" "def" "macro" "lib" "enum")) "\\|"
           (regexp-opt '("if" "unless" "case" "while" "until" "for" "begin"))
           "\\)\\_>")
   "Regexp to match where the indentation gets deeper.")
@@ -103,7 +103,7 @@
 (defconst crystal-block-end-re "\\_<end\\_>")
 
 (defconst crystal-defun-beg-re
-  '"\\(def\\|class\\|module\\|macro\\)"
+  '"\\(def\\|class\\|module\\|macro\\|lib\\|enum\\)"
   "Regexp to match the beginning of a defun, in the general sense.")
 
 (defconst crystal-singleton-class-re
@@ -381,7 +381,8 @@ It is used when `crystal-encoding-magic-comment-style' is set to `custom'."
        (exp3 ("def" insts "end")
              ("begin" insts-rescue-insts "end")
              ("do" insts "end")
-             ("class" insts "end") ("module" insts "end")
+             ("class" insts "end")
+             ("module" insts "end")
              ("[" expseq "]")
              ("{" hashvals "}")
              ("{" insts "}")
@@ -393,6 +394,8 @@ It is used when `crystal-encoding-magic-comment-style' is set to `custom'."
              ("if" if-body "end")
              ("for" for-body "end")
              ("macro" insts "end")
+             ("lib" insts "end")
+             ("enum" insts "end")
              ("{%" exp "%}")
              ("{%for%}" insts "{%end%}")
              ("{%if%}" if-macro-body "{%end%}")
@@ -720,7 +723,7 @@ It is used when `crystal-encoding-magic-comment-style' is set to `custom'."
      (message "Before ;")
      (cond
       ((smie-rule-parent-p "def" "begin" "do" "class" "module" "{%for%}"
-                           "while" "until" "unless" "macro"
+                           "while" "until" "unless" "macro" "enum" "lib"
                            "if" "then" "elsif" "else" "when" "{%if%}"
                            "{%elsif%}" "{%else%}" "{%unless%}"
                            "rescue" "ensure" "{")
