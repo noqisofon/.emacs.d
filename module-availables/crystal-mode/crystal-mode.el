@@ -401,7 +401,7 @@ It is used when `crystal-encoding-magic-comment-style' is set to `custom'."
              ("lib" insts "end")
              ("struct" insts "end")
              ("enum" insts "end")
-             ("fun" insts "end")
+             ;("fun" insts "end")
              ("type" insts "end"))
        ;;(macro-cmd (inst) (forexp))
        ;;(macro-cmds (macro-cmd) (macro-cmds ";" macro-cmds))
