@@ -23,14 +23,31 @@
 ;; 
 
 ;;; Code:
-(setq inferior-fsharp-program "/usr/bin/fsharpi")
-(setq fsharp-compiler "/usr/bin/fsharpc")
+;;
+(setq inferior-fsharp-program (if windows-nt-p
+                                  ""
+                                "/usr/bin/fsharpi"))
+(setq fsharp-compiler (if windows-nt-p
+                          ""
+                        "/usr/bin/fsharpc"))
 
+;; fsharp-tab-always-indent
+;; TAB キーを押すと:
+;;         t: いつもインデントされます。
+;;     not t: されない？
+(setq-default fsharp-tab-always-indent t)
+
+;; fsharp-indent-offset
+;; インデントサイズは 2 です。
 (setq-default fsharp-indent-offset 2)
+
+(setq-default fsharp-continuation-offset 2)
+
+(setq-default fsharp-smart-indentation t)
 
 (lazyload (fsharp-mode) "fsharp-mode")
 ;; F# モード。
-(push '("\\.fsx$" . fsharp-mode) auto-mode-alist)
+(push '("\\.fs[iylx]?$" . fsharp-mode) auto-mode-alist)
 
 (provide '040-fsharp)
 ;;; 040-fsharp.el ends here
