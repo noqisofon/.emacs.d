@@ -25,10 +25,10 @@
 ;;; Code:
 ;;
 (setq inferior-fsharp-program (if windows-nt-p
-                                  ""
+                                  "c:/Program Files (x86)/Microsoft SDKs/F#/4.0/Framework/v4.0/fsi"
                                 "/usr/bin/fsharpi"))
 (setq fsharp-compiler (if windows-nt-p
-                          ""
+                          "c:/Program Files (x86)/Microsoft SDKs/F#/4.0/Framework/v4.0/fsc"
                         "/usr/bin/fsharpc"))
 
 ;; fsharp-tab-always-indent
