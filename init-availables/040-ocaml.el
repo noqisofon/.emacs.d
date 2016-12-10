@@ -23,11 +23,16 @@
 ;; 
 
 ;;; Code:
-(push '("\\.ml[ily]$" . tuareg-mode) auto-mode-alist)
-(push '("\\.topml$" . tuareg-mode) auto-mode-alist)
-(push '("\\.ocaml$" . tuareg-mode) auto-mode-alist)
+(setq tuareg-indent-align-with-first-arg t)
+(setq tuareg-match-patterns-aligned t)
 
+(push '("\\.ml[ily]?$" . tuareg-mode) auto-mode-alist)
+(push '("\\.topml$"    . tuareg-mode) auto-mode-alist)
+(push '("\\.ocaml$"    . tuareg-mode) auto-mode-alist)
+
+(lazyload (tuareg-run-ocaml) "tuareg")
 (lazyload (tuareg-mode) "tuareg")
+(lazyload (ocamldebug) "tuaregdebug")
 
 (provide '040-ocaml)
 ;;; 040-ocaml.el ends here
