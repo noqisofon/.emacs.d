@@ -14,7 +14,7 @@
  '(escape-glyph                     ((t (:foreground "brown"))))
 
  ;; 選択範囲
- '(region                           ((t                              (:background "#adc3e8"))))
+ '(region                           ((t (                             :background "#adc3e8"))))
 
  ;; isearch でヒットした文字列
  '(isearch                          ((t (:foreground "lightskyblue1"  :background "magenta3"))))
@@ -65,7 +65,7 @@
  '(font-lock-builtin-face           ((t (:foreground "MediumPurple3"  :bold t  :weight bold))))
 
  ;; 括弧
- '(show-paren-match                 ((t (:background "gray85"))))
+ '(show-paren-match                 ((t (                            :background "gray85"))))
  '(show-paren-mismatch              ((t (:foreground "white"         :background "purple"))))
  )
 
