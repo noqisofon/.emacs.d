@@ -56,13 +56,13 @@
  '(font-lock-keyword-face           ((t (:foreground "green4"         :bold t  :weight bold))))
 
  ;; プリプロセッサ
- '(font-lock-preprocessor-face      ((t (:foreground "medium purple2" :bold t  :weight bold))))
+ '(font-lock-preprocessor-face      ((t (:foreground "MediumPurple2"  :bold t  :weight bold))))
 
      ;; 定数的な？
  '(font-lock-constant-face          ((t (:foreground "dark green"))))
 
  ;; ビルトイン？(Lisp ではキーワード)
- '(font-lock-builtin-face           ((t (:foreground "medium purple3" :bold t  :weight bold))))
+ '(font-lock-builtin-face           ((t (:foreground "MediumPurple3"  :bold t  :weight bold))))
 
  ;; 括弧
  '(show-paren-match                 ((t (:background "gray85"))))
