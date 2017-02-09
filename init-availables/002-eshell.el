@@ -29,5 +29,13 @@
   (setenv "VISUAL" emacsclient)
   (setenv "EDITOR" emacsclient))
 
+;; eshell のプロンプトを zsh っぽくする。
+(setq eshell-prompt-function
+      (lambda ()
+        (concat (user-login-name) "@" (system-name)
+                " "
+                (eshell/pwd)
+                (if (= (user-uid) 0) " # " " % "))))
+
 (provide '002-eshell)
 ;;; 002-eshell.el ends here
