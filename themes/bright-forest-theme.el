@@ -56,7 +56,7 @@
  '(font-lock-keyword-face           ((t (:foreground "green4"         :bold t  :weight bold))))
 
  ;; プリプロセッサ
- '(font-lock-preprocessor-face      ((t (:foreground "MediumPurple2"  :bold t  :weight bold))))
+ '(font-lock-preprocessor-face      ((t (:foreground "MediumPurple3"  :bold t  :weight bold))))
 
      ;; 定数的な？
  '(font-lock-constant-face          ((t (:foreground "dark green"))))

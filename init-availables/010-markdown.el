@@ -6,6 +6,8 @@
 (push '("\\.mard$" . markdown-mode) auto-mode-alist)
 (push '("\\.markdown$" . markdown-mode) auto-mode-alist)
 
+(setq markdown-command "markded")
+
 (lazyload (markdown-mode) "markdown-mode")
 
 (provide '010-markdown)

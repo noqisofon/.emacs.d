@@ -55,8 +55,8 @@
  (c-set-offset 'arglist-close 0)
  ;; public などのアクセス修飾子は -3 インデントします。
  (c-set-offset 'access-label -3)
- ;; switch 構文のラベルは c-basic-offset だけインデントします。
- (c-set-offset 'case-label '+)
+ ;; switch 構文のラベルはインデントしません。
+ (c-set-offset 'case-label 0)
  ;; 継続行は c-basic-offset 分のインデントを行います。
  (c-set-offset 'statement-cont '+)
  ;; クラスのメンバー初期化リストの 1 行目は c-basic-offset 分インデントします。
