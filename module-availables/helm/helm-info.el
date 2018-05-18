@@ -1,6 +1,6 @@
 ;;; helm-info.el --- Browse info index with helm -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2018 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 (require 'cl-lib)
 (require 'helm)
 (require 'helm-lib)
+(require 'helm-utils)
 (require 'info)
 
 (declare-function Info-index-nodes "info" (&optional file))
@@ -52,8 +53,8 @@ files with `helm-info-at-point'."
                  (helm-candidate-buffer))
       (kill-buffer it))
   (unless (helm-candidate-buffer)
-    (save-window-excursion
-      (info file)
+    (save-selected-window
+      (info file " *helm info temp buffer*")
       (let ((tobuf (helm-candidate-buffer 'global))
             Info-history
             start end line)
@@ -77,7 +78,8 @@ files with `helm-info-at-point'."
                           "\n" "" (buffer-substring start end)))
               (with-current-buffer tobuf
                 (insert line)
-                (insert "\n")))))))))
+                (insert "\n")))))
+        (bury-buffer)))))
 
 (defun helm-info-goto (node-line)
   (Info-goto-node (car node-line))
@@ -185,11 +187,24 @@ helm-info-<CANDIDATE>."
     :action '(("Search index" . helm-info-search-index))))
 
 ;;;###autoload
-(defun helm-info ()
-  "Preconfigured `helm' for searching Info files' indices."
-  (interactive)
+(defun helm-info (&optional refresh)
+  "Preconfigured `helm' for searching Info files' indices.
+
+With a prefix argument \\[universal-argument], set REFRESH to non-nil.
+
+Optional parameter REFRESH, when non-nil, reevaluates
+`helm-default-info-index-list'.  If the variable has been
+customized, set it to its saved value.  If not, set it to its
+standard value.  See `custom-reevaluate-setting' for more.
+
+REFRESH is useful when new Info files are installed.  If
+`helm-default-info-index-list' has not been customized, the new
+Info files are made available."
+  (interactive "P")
   (let ((default (unless (ring-empty-p helm-info-searched)
                    (ring-ref helm-info-searched 0))))
+    (when refresh
+      (custom-reevaluate-setting 'helm-default-info-index-list))
     (helm :sources (helm-def-source--info-files)
           :buffer "*helm Info*"
           :preselect (and default
@@ -230,8 +245,7 @@ helm-info-<CANDIDATE>."
 
 ;;;###autoload
 (defun helm-info-at-point ()
-  "Preconfigured `helm' for searching info at point.
-With a prefix-arg insert symbol at point."
+  "Preconfigured `helm' for searching info at point."
   (interactive)
   (helm :sources helm-info-default-sources
         :buffer "*helm info*"))
@@ -239,7 +253,7 @@ With a prefix-arg insert symbol at point."
 (provide 'helm-info)
 
 ;; Local Variables:
-;; byte-compile-warnings: (not cl-functions obsolete)
+;; byte-compile-warnings: (not obsolete)
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:

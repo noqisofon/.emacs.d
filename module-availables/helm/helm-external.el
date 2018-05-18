@@ -1,6 +1,6 @@
 ;;; helm-external.el --- Run Externals commands within Emacs with helm completion. -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2018 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -81,7 +81,7 @@ and sets `helm-external-commands-list'."
                 (if sort (sort completions 'string-lessp) completions)))))
 
 (defun helm-run-or-raise (exe &optional file)
-  "Generic command that run asynchronously EXE.
+  "Run asynchronously EXE or jump to the application window.
 If EXE is already running just jump to his window if `helm-raise-command'
 is non--nil.
 When FILE argument is provided run EXE with FILE."
@@ -101,7 +101,7 @@ When FILE argument is provided run EXE with FILE."
                               (shell-quote-argument
                                (if (eq system-type 'windows-nt)
                                    (helm-w32-prepare-filename file)
-                                   file))))
+                                   (expand-file-name file)))))
           (start-process-shell-command proc nil real-com))
         (set-process-sentinel
          (get-process proc)
@@ -205,7 +205,7 @@ You can set your own list of commands with
 (provide 'helm-external)
 
 ;; Local Variables:
-;; byte-compile-warnings: (not cl-functions obsolete)
+;; byte-compile-warnings: (not obsolete)
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:

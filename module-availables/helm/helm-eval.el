@@ -1,6 +1,6 @@
 ;;; helm-eval.el --- eval expressions from helm. -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2018 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -96,6 +96,7 @@ Should take one arg: the string to display."
                                                   (eval (read helm-pattern)))))
                                          (error "Error"))))
     :nohighlight t
+    :keymap helm-eval-expression-map
     :action '(("Copy result to kill-ring" . (lambda (candidate)
                                               (kill-new
                                                (replace-regexp-in-string
@@ -167,8 +168,7 @@ Should take one arg: the string to display."
         :input (when arg (thing-at-point 'sexp))
         :buffer "*helm eval*"
         :echo-input-in-header-line nil
-        :history 'read-expression-history
-        :keymap helm-eval-expression-map))
+        :history 'read-expression-history))
 
 (defvar eldoc-idle-delay)
 ;;;###autoload
@@ -196,7 +196,7 @@ Should take one arg: the string to display."
 (provide 'helm-eval)
 
 ;; Local Variables:
-;; byte-compile-warnings: (not cl-functions obsolete)
+;; byte-compile-warnings: (not obsolete)
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:

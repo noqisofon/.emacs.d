@@ -1,6 +1,6 @@
 ;;; helm-types.el --- Helm types classes and methods. -*- lexical-binding: t -*-
 
-;; Copyright (C) 2015 ~ 2016  Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2015 ~ 2018  Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; Author: Thierry Volpiatto <thierry.volpiatto@gmail.com>
 ;; URL: http://github.com/emacs-helm/helm
@@ -39,31 +39,33 @@
 
 (defcustom helm-type-file-actions
   (helm-make-actions
-    "Find file"                             'helm-find-many-files
-    "Find file as root"                     'helm-find-file-as-root
-    "Find file other window"                'helm-find-files-other-window
-    "Find file other frame"                 'find-file-other-frame
-    "Open dired in file's directory"        'helm-open-dired
-    "Grep File(s) `C-u recurse'"            'helm-find-files-grep
-    "Zgrep File(s) `C-u Recurse'"           'helm-ff-zgrep
-    "Pdfgrep File(s)"                       'helm-ff-pdfgrep
-    "Insert as org link"                    'helm-files-insert-as-org-link
-    "Checksum File"                         'helm-ff-checksum
-    "Ediff File"                            'helm-find-files-ediff-files
-    "Ediff Merge File"                      'helm-find-files-ediff-merge-files
-    "Etags `M-., C-u reload tag file'"      'helm-ff-etags-select
-    "View file"                             'view-file
-    "Insert file"                           'insert-file
-    "Add marked files to file-cache"        'helm-ff-cache-add-file
-    "Delete file(s)"                        'helm-delete-marked-files
-    "Copy file(s) `M-C, C-u to follow'"     'helm-find-files-copy
-    "Rename file(s) `M-R, C-u to follow'"   'helm-find-files-rename
-    "Symlink files(s) `M-S, C-u to follow'" 'helm-find-files-symlink
-    "Relsymlink file(s) `C-u to follow'"    'helm-find-files-relsymlink
-    "Hardlink file(s) `M-H, C-u to follow'" 'helm-find-files-hardlink
-    "Open file externally (C-u to choose)"  'helm-open-file-externally
-    "Open file with default tool"           'helm-open-file-with-default-tool
-    "Find file in hex dump"                 'hexl-find-file)
+    "Find file"                               'helm-find-many-files
+    "Find file as root"                       'helm-find-file-as-root
+    "Find file other window"                  'helm-find-files-other-window
+    "Find file other frame"                   'find-file-other-frame
+    "Open dired in file's directory"          'helm-open-dired
+    "Attach file(s) to mail buffer `C-c C-a'" 'helm-ff-mail-attach-files
+    "Marked files in dired"                   'helm-marked-files-in-dired
+    "Grep File(s) `C-u recurse'"              'helm-find-files-grep
+    "Zgrep File(s) `C-u Recurse'"             'helm-ff-zgrep
+    "Pdfgrep File(s)"                         'helm-ff-pdfgrep
+    "Insert as org link"                      'helm-files-insert-as-org-link
+    "Checksum File"                           'helm-ff-checksum
+    "Ediff File"                              'helm-find-files-ediff-files
+    "Ediff Merge File"                        'helm-find-files-ediff-merge-files
+    "Etags `M-., C-u reload tag file'"        'helm-ff-etags-select
+    "View file"                               'view-file
+    "Insert file"                             'insert-file
+    "Add marked files to file-cache"          'helm-ff-cache-add-file
+    "Delete file(s)"                          'helm-delete-marked-files
+    "Copy file(s) `M-C, C-u to follow'"       'helm-find-files-copy
+    "Rename file(s) `M-R, C-u to follow'"     'helm-find-files-rename
+    "Symlink files(s) `M-S, C-u to follow'"   'helm-find-files-symlink
+    "Relsymlink file(s) `C-u to follow'"      'helm-find-files-relsymlink
+    "Hardlink file(s) `M-H, C-u to follow'"   'helm-find-files-hardlink
+    "Open file externally (C-u to choose)"    'helm-open-file-externally
+    "Open file with default tool"             'helm-open-file-with-default-tool
+    "Find file in hex dump"                   'hexl-find-file)
   "Default actions for type files."
   :group 'helm-files
   :type '(alist :key-type string :value-type function))
@@ -79,11 +81,13 @@
           helm-transform-file-cache))
   (setf (slot-value source 'candidate-transformer)
         '(helm-skip-boring-files
-          helm-highlight-files
           helm-w32-pathname-transformer))
+  (setf (slot-value source 'filtered-candidate-transformer)
+        'helm-highlight-files)
   (setf (slot-value source 'help-message) 'helm-generic-file-help-message)
   (setf (slot-value source 'mode-line) (list "File(s)" helm-mode-line-string))
-  (setf (slot-value source 'keymap) helm-generic-files-map))
+  (setf (slot-value source 'keymap) helm-generic-files-map)
+  (setf (slot-value source 'group) 'helm-files))
 
 
 ;; Bookmarks
@@ -116,7 +120,8 @@
   (setf (slot-value source 'mode-line) (list "Bookmark(s)" helm-mode-line-string))
   (setf (slot-value source 'help-message) 'helm-bookmark-help-message)
   (setf (slot-value source 'migemo) t)
-  (setf (slot-value source 'follow) 'never))
+  (setf (slot-value source 'follow) 'never)
+  (setf (slot-value source 'group) 'helm-bookmark))
 
 
 ;; Buffers
@@ -125,17 +130,11 @@
 
 (defcustom helm-type-buffer-actions
   (helm-make-actions
-   "Switch to buffer(s)" 'helm-switch-to-buffers
-   (lambda () (and (locate-library "popwin")
-                   "Switch to buffer in popup window"))
-   'popwin:popup-buffer
+   "Switch to buffer(s)" 'helm-buffer-switch-buffers
    "Switch to buffer(s) other window `C-c o'"
-   'helm-switch-to-buffers-other-window
+   'helm-buffer-switch-buffers-other-window
    "Switch to buffer other frame `C-c C-o'"
    'switch-to-buffer-other-frame
-   (lambda () (and (locate-library "elscreen")
-                   "Display buffer in Elscreen"))
-   'helm-find-buffer-on-elscreen
    "Browse project from buffer"
    'helm-buffers-browse-project
    "Query replace regexp `C-M-%'"
@@ -143,6 +142,7 @@
    "Query replace `M-%'" 'helm-buffer-query-replace
    "View buffer" 'view-buffer
    "Display buffer" 'display-buffer
+   "Rename buffer" 'helm-buffers-rename-buffer
    "Grep buffers `M-g s' (C-u grep all buffers)"
    'helm-zgrep-buffers
    "Multi occur buffer(s) `C-s'" 'helm-multi-occur-as-action
@@ -170,7 +170,8 @@
   (setf (slot-value source 'filtered-candidate-transformer)
         '(helm-skip-boring-buffers
           helm-buffers-sort-transformer
-          helm-highlight-buffers)))
+          helm-highlight-buffers))
+  (setf (slot-value source 'group) 'helm-buffers))
 
 ;; Functions
 (defclass helm-type-function (helm-source) ()
@@ -231,7 +232,8 @@
 (defmethod helm--setup-source :before ((source helm-type-command))
   (setf (slot-value source 'action) 'helm-type-command-actions)
   (setf (slot-value source 'coerce) 'helm-symbolify)
-  (setf (slot-value source 'persistent-action) 'describe-function))
+  (setf (slot-value source 'persistent-action) 'describe-function)
+  (setf (slot-value source 'group) 'helm-command))
 
 ;; Timers
 (defclass helm-type-timers (helm-source) ()
@@ -260,7 +262,8 @@
   (setf (slot-value source 'persistent-action)
         (lambda (tm)
           (describe-function (timer--function tm))))
-  (setf (slot-value source 'persistent-help) "Describe Function"))
+  (setf (slot-value source 'persistent-help) "Describe Function")
+  (setf (slot-value source 'group) 'helm-elisp))
 
 ;; Builders.
 (defun helm-build-type-file ()
@@ -275,7 +278,7 @@
 (provide 'helm-types)
 
 ;; Local Variables:
-;; byte-compile-warnings: (not cl-functions obsolete)
+;; byte-compile-warnings: (not obsolete)
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:

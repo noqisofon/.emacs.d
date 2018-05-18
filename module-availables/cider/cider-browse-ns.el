@@ -1,6 +1,6 @@
 ;;; cider-browse-ns.el --- CIDER namespace browser
 
-;; Copyright © 2014-2016 John Andrews, Bozhidar Batsov and CIDER contributors
+;; Copyright © 2014-2018 John Andrews, Bozhidar Batsov and CIDER contributors
 
 ;; Author: John Andrews <john.m.andrews@gmail.com>
 
@@ -37,13 +37,14 @@
 
 (require 'cider-interaction)
 (require 'cider-client)
+(require 'subr-x)
 (require 'cider-compat)
 (require 'cider-util)
 (require 'nrepl-dict)
+(require 'easymenu)
 
 (defconst cider-browse-ns-buffer "*cider-ns-browser*")
-
-(push cider-browse-ns-buffer cider-ancillary-buffers)
+(add-to-list 'cider-ancillary-buffers cider-browse-ns-buffer)
 
 (defvar-local cider-browse-ns-current-ns nil)
 
@@ -58,6 +59,13 @@
     (define-key map "^" #'cider-browse-ns-all)
     (define-key map "n" #'next-line)
     (define-key map "p" #'previous-line)
+    (easy-menu-define cider-browse-ns-mode-menu map
+      "Menu for CIDER's namespace browser"
+      '("Namespace Browser"
+        ["Show doc" cider-browse-ns-doc-at-point]
+        ["Go to definition" cider-browse-ns-find-at-point]
+        "--"
+        ["Browse all namespaces" cider-browse-ns-all]))
     map))
 
 (defvar cider-browse-ns-mouse-map
@@ -69,9 +77,9 @@
   "Major mode for browsing Clojure namespaces.
 
 \\{cider-browse-ns-mode-map}"
-  (setq buffer-read-only t)
   (setq-local electric-indent-chars nil)
-  (setq-local truncate-lines t)
+  (when cider-special-mode-truncate-lines
+    (setq-local truncate-lines t))
   (setq-local cider-browse-ns-current-ns nil))
 
 (defun cider-browse-ns--text-face (var-meta)
@@ -170,13 +178,13 @@ Each item consists of a ns-var and the first line of its docstring."
 (defun cider-browse-ns--thing-at-point ()
   "Get the thing at point.
 Return a list of the type ('ns or 'var) and the value."
-  (let ((line (car (split-string (cider-string-trim (thing-at-point 'line)) " "))))
+  (let ((line (car (split-string (string-trim (thing-at-point 'line)) " "))))
     (if (string-match "\\." line)
-        (list 'ns line)
-      (list 'var (format "%s/%s"
-                         (or (get-text-property (point) 'cider-browse-ns-current-ns)
-                             cider-browse-ns-current-ns)
-                         line)))))
+        `(ns ,line)
+      `(var ,(format "%s/%s"
+                     (or (get-text-property (point) 'cider-browse-ns-current-ns)
+                         cider-browse-ns-current-ns)
+                     line)))))
 
 (defun cider-browse-ns-doc-at-point ()
   "Show the documentation for the thing at current point."

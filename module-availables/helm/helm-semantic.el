@@ -1,6 +1,8 @@
 ;;; helm-semantic.el --- Helm interface for Semantic -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2016 Daniel Hackney <dan@haxney.org>
+;; Copyright (C) 2012 ~ 2017 Daniel Hackney <dan@haxney.org>
+;;               2012 ~ 2018  Thierry Volpiatto<thierry.volpiatto@gmail.com>
+
 ;; Author: Daniel Hackney <dan@haxney.org>
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -160,10 +162,13 @@ you have completion on these functions with `C-M i' in the customize interface."
   "Preconfigured `helm' for `semantic'.
 If ARG is supplied, pre-select symbol at point instead of current"
   (interactive "P")
-  (let ((tag (helm-aif (semantic-current-tag-parent)
-                  (cons (format "\\_<%s\\_>" (car it))
-                        (format "\\_<%s\\_>" (car (semantic-current-tag))))
-                (format "\\_<%s\\_>" (car (semantic-current-tag))))))
+  (let ((tag (helm-aif (car (semantic-current-tag-parent))
+                 (let ((curtag (car (semantic-current-tag))))
+                   (if (string= it curtag)
+                       (format "\\_<%s\\_>" curtag)
+                     (cons (format "\\_<%s\\_>" it)
+                           (format "\\_<%s\\_>" curtag))))
+               (format "\\_<%s\\_>" (car (semantic-current-tag))))))
     (unless helm-source-semantic
       (setq helm-source-semantic
             (helm-make-source "Semantic Tags" 'helm-semantic-source
@@ -202,20 +207,23 @@ Fill in the symbol at point by default."
          (helm-execute-action-at-once-if-one
           (and imenu-p
                helm-imenu-execute-action-at-once-if-one))
-         (tag (helm-aif (semantic-current-tag-parent)
-                  (cons (format "\\_<%s\\_>" (car it))
-                        (format "\\_<%s\\_>" (car (semantic-current-tag))))
+         (tag (helm-aif (car (semantic-current-tag-parent))
+                  (let ((curtag (car (semantic-current-tag))))
+                    (if (string= it curtag)
+                        (format "\\_<%s\\_>" curtag)
+                      (cons (format "\\_<%s\\_>" it)
+                            (format "\\_<%s\\_>" curtag))))
                 (format "\\_<%s\\_>" (car (semantic-current-tag))))))
     (helm :sources source
           :candidate-number-limit 9999
-          :default (and imenu-p (list (concat "\\_<" str "\\_>") str))
+          :default (and imenu-p (list (concat "\\_<" (and str (regexp-quote str)) "\\_>") str))
           :preselect (if (or arg imenu-p) str tag)
           :buffer "*helm semantic/imenu*")))
 
 (provide 'helm-semantic)
 
 ;; Local Variables:
-;; byte-compile-warnings: (not cl-functions obsolete)
+;; byte-compile-warnings: (not obsolete)
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:

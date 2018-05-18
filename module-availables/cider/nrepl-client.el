@@ -1,7 +1,7 @@
 ;;; nrepl-client.el --- Client for Clojure nREPL -*- lexical-binding: t -*-
 
 ;; Copyright © 2012-2013 Tim King, Phil Hagelberg, Bozhidar Batsov
-;; Copyright © 2013-2016 Bozhidar Batsov, Artur Malabarba and CIDER contributors
+;; Copyright © 2013-2018 Bozhidar Batsov, Artur Malabarba and CIDER contributors
 ;;
 ;; Author: Tim King <kingtim@gmail.com>
 ;;         Phil Hagelberg <technomancy@gmail.com>
@@ -9,6 +9,7 @@
 ;;         Artur Malabarba <bruce.connor.am@gmail.com>
 ;;         Hugo Duncan <hugo@hugoduncan.org>
 ;;         Steve Purcell <steve@sanityinc.com>
+;;         Reid McKenzie <me@arrdem.com>
 ;;
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -38,7 +39,7 @@
 ;; The nREPL communication process can be broadly represented as follows:
 ;;
 ;;    1) The server process is started as an Emacs subprocess (usually by
-;;      `cider-jack-in', which in turn fires up leiningen or boot).  Note that
+;;       `cider-jack-in', which in turn fires up leiningen or boot).  Note that
 ;;       if a connection was established using `cider-connect' there won't be
 ;;       a server process.
 ;;
@@ -69,6 +70,7 @@
 
 ;;; Code:
 (require 'seq)
+(require 'subr-x)
 (require 'cider-compat)
 (require 'cl-lib)
 (require 'nrepl-dict)
@@ -111,6 +113,11 @@ The `nrepl-buffer-name-separator' separates cider-repl from the project name."
 
 (defcustom nrepl-force-ssh-for-remote-hosts nil
   "If non-nil, do not attempt a direct connection for remote hosts."
+  :type 'boolean
+  :group 'nrepl)
+
+(defcustom nrepl-use-ssh-fallback-for-remote-hosts nil
+  "If non-nil, attempt to connect via ssh to remote hosts when unable to connect directly."
   :type 'boolean
   :group 'nrepl)
 
@@ -273,7 +280,8 @@ PROJECT-DIR, HOST and PORT are as in `nrepl-make-buffer-name'."
   "Read port from .nrepl-port, nrepl-port or target/repl-port files in directory DIR."
   (or (nrepl--port-from-file (expand-file-name "repl-port" dir))
       (nrepl--port-from-file (expand-file-name ".nrepl-port" dir))
-      (nrepl--port-from-file (expand-file-name "target/repl-port" dir))))
+      (nrepl--port-from-file (expand-file-name "target/repl-port" dir))
+      (nrepl--port-from-file (expand-file-name ".shadow-cljs/nrepl.port" dir))))
 
 (defun nrepl--port-from-file (file)
   "Attempts to read port from a file named by FILE."
@@ -495,7 +503,7 @@ and kill the process buffer."
     (message "[nREPL] Connection closed unexpectedly (%s)"
              (substring message 0 -1)))
   (when (equal (process-status process) 'closed)
-    (when-let ((client-buffer (process-buffer process)))
+    (when-let* ((client-buffer (process-buffer process)))
       (nrepl--clear-client-sessions client-buffer)
       (with-current-buffer client-buffer
         (run-hooks 'nrepl-disconnected-hook)
@@ -512,36 +520,51 @@ and kill the process buffer."
 For local hosts use a direct connection.  For remote hosts, if
 `nrepl-force-ssh-for-remote-hosts' is nil, attempt a direct connection
 first.  If `nrepl-force-ssh-for-remote-hosts' is non-nil or the direct
-connection failed, try to start a SSH tunneled connection.  Return a plist
-of the form (:proc PROC :host \"HOST\" :port PORT) that might contain
-additional key-values depending on the connection type."
+connection failed (and `nrepl-use-ssh-fallback-for-remote-hosts' is
+non-nil), try to start a SSH tunneled connection.  Return a plist of the
+form (:proc PROC :host \"HOST\" :port PORT) that might contain additional
+key-values depending on the connection type."
   (let ((localp (if host
                     (nrepl-local-host-p host)
                   (not (file-remote-p default-directory)))))
-    (if  localp
+    (if localp
         (nrepl--direct-connect (or host "localhost") port)
-      (or (and host (not nrepl-force-ssh-for-remote-hosts)
-               (nrepl--direct-connect host port 'no-error))
-          (nrepl--ssh-tunnel-connect host port)))))
+      ;; we're dealing with a remote host
+      (if (and host (not nrepl-force-ssh-for-remote-hosts))
+          (or (nrepl--direct-connect host port 'no-error)
+              ;; direct connection failed
+              ;; fallback to ssh tunneling if enabled
+              (and nrepl-use-ssh-fallback-for-remote-hosts
+                   (message "[nREPL] Falling back to SSH tunneled connection ...")
+                   (nrepl--ssh-tunnel-connect host port))
+              ;; fallback is either not enabled or it failed as well
+              (error "[nREPL] Cannot connect to %s:%s" host port))
+        ;; `nrepl-force-ssh-for-remote-hosts' is non-nil
+        (nrepl--ssh-tunnel-connect host port)))))
 
 (defun nrepl--direct-connect (host port &optional no-error)
   "If HOST and PORT are given, try to `open-network-stream'.
 If NO-ERROR is non-nil, show messages instead of throwing an error."
   (if (not (and host port))
       (unless no-error
-        (error "Host (%s) and port (%s) must be provided" host port))
+        (unless host
+          (error "[nREPL] Host not provided"))
+        (unless port
+          (error "[nREPL] Port not provided")))
     (message "[nREPL] Establishing direct connection to %s:%s ..." host port)
     (condition-case nil
         (prog1 (list :proc (open-network-stream "nrepl-connection" nil host port)
                      :host host :port port)
-          (message "[nREPL] Direct connection established"))
-      (error (let ((mes "[nREPL] Direct connection failed"))
-               (if no-error (message mes) (error mes))
+          (message "[nREPL] Direct connection to %s:%s established" host port))
+      (error (let ((msg (format "[nREPL] Direct connection to %s:%s failed" host port)))
+               (if no-error
+                   (message msg)
+                 (error msg))
                nil)))))
 
 (defun nrepl--ssh-tunnel-connect (host port)
   "Connect to a remote machine identified by HOST and PORT through SSH tunnel."
-  (message "[nREPL] Establishing SSH tunneled connection ...")
+  (message "[nREPL] Establishing SSH tunneled connection to %s:%s ..." host port)
   (let* ((remote-dir (if host (format "/ssh:%s:" host) default-directory))
          (ssh (or (executable-find "ssh")
                   (error "[nREPL] Cannot locate 'ssh' executable")))
@@ -563,7 +586,7 @@ If NO-ERROR is non-nil, show messages instead of throwing an error."
 
 (defun nrepl--ssh-tunnel-command (ssh dir port)
   "Command string to open SSH tunnel to the host associated with DIR's PORT."
-  (with-parsed-tramp-file-name dir nil
+  (with-parsed-tramp-file-name dir v
     ;; this abuses the -v option for ssh to get output when the port
     ;; forwarding is set up, which is used to synchronise on, so that
     ;; the port forwarding is up when we try to connect.
@@ -571,8 +594,8 @@ If NO-ERROR is non-nil, show messages instead of throwing an error."
      "%s -v -N -L %p:localhost:%p %u'%h'"
      `((?s . ,ssh)
        (?p . ,port)
-       (?h . ,host)
-       (?u . ,(if user (format "-l '%s' " user) ""))))))
+       (?h . ,v-host)
+       (?u . ,(if v-user (format "-l '%s' " v-user) ""))))))
 
 (autoload 'comint-watch-for-password-prompt "comint"  "(autoload).")
 
@@ -595,6 +618,13 @@ If NO-ERROR is non-nil, show messages instead of throwing an error."
 
 
 ;;; Client: Process Handling
+(defun nrepl--kill-process (proc)
+  "Kill PROC using the appropriate, os specific way.
+Implement a workaround to clean up an orphaned JVM process left around
+after exiting the REPL on some windows machines."
+  (if (memq system-type '(cygwin windows-nt))
+      (interrupt-process proc)
+    (kill-process proc)))
 
 (defun nrepl--maybe-kill-server-buffer (server-buf)
   "Kill SERVER-BUF and its process, subject to user confirmation.
@@ -607,7 +637,7 @@ Do nothing if there is a REPL connected to that server."
       (let ((proc (get-buffer-process server-buf)))
         (when (process-live-p proc)
           (set-process-query-on-exit-flag proc nil)
-          (kill-process proc))
+          (nrepl--kill-process proc))
         (kill-buffer server-buf)))))
 
 ;; `nrepl-start-client-process' is called from `nrepl-server-filter'. It
@@ -636,11 +666,11 @@ process."
     (process-put client-proc :response-q (nrepl-response-queue))
 
     (with-current-buffer client-buf
-      (when-let ((server-buf (and server-proc (process-buffer server-proc))))
+      (when-let* ((server-buf (and server-proc (process-buffer server-proc))))
         (setq nrepl-project-dir (buffer-local-value 'nrepl-project-dir server-buf)
               nrepl-server-buffer server-buf))
       (setq nrepl-endpoint `(,host ,port)
-            nrepl-tunnel-buffer (when-let ((tunnel (plist-get endpoint :tunnel)))
+            nrepl-tunnel-buffer (when-let* ((tunnel (plist-get endpoint :tunnel)))
                                   (process-buffer tunnel))
             nrepl-pending-requests (make-hash-table :test 'equal)
             nrepl-completed-requests (make-hash-table :test 'equal)))
@@ -663,7 +693,7 @@ eval requests for functionality like pretty-printing won't clobber the
 values of *1, *2, etc."
   (let* ((client-conn (process-buffer client))
          (response-main (nrepl-sync-request:clone client-conn))
-         (response-tooling (nrepl-sync-request:clone client-conn)))
+         (response-tooling (nrepl-sync-request:clone client-conn t))) ; t for tooling
     (nrepl-dbind-response response-main (new-session err)
       (if new-session
           (with-current-buffer client-conn
@@ -704,18 +734,39 @@ CONN-BUFFER refers to a (presumably) dead connection, which we can eventually re
 It is safe to call this function multiple times on the same ID."
   ;; FIXME: This should go away eventually when we get rid of
   ;; pending-request hash table
-  (when-let ((handler (gethash id nrepl-pending-requests)))
+  (when-let* ((handler (gethash id nrepl-pending-requests)))
     (puthash id handler nrepl-completed-requests)
     (remhash id nrepl-pending-requests)))
 
+(declare-function cider-repl--emit-interactive-output "cider-repl")
+(defun nrepl-notify (msg type)
+  "Handle \"notification\" server request.
+MSG is a string to be displayed.  TYPE is the type of the message.  All
+notifications are currently displayed with `message' function and emitted
+to the REPL."
+  (let* ((face (pcase type
+                 ((or "message" `nil) 'font-lock-builtin-face)
+                 ("warning" 'warning)
+                 ("error"   'error)))
+         (msg (if face
+                  (propertize msg 'face face)
+                (format "%s: %s" (upcase type) msg))))
+    (cider-repl--emit-interactive-output msg (or face 'font-lock-builtin-face))
+    (message msg)
+    ;; Interactive eval handler covers this message, but it won't be eval
+    ;; middleware using this functionality.
+    (sit-for 2)))
+
 (defvar cider-buffer-ns)
+(defvar cider-special-mode-truncate-lines)
 (declare-function cider-need-input "cider-interaction")
 (declare-function cider-set-buffer-ns "cider-mode")
 
 (defun nrepl-make-response-handler (buffer value-handler stdout-handler
                                            stderr-handler done-handler
                                            &optional eval-error-handler
-                                           pprint-out-handler)
+                                           pprint-out-handler
+                                           content-type-handler)
   "Make a response handler for connection BUFFER.
 A handler is a function that takes one argument - response received from
 the server process.  The response is an alist that contains at least 'id'
@@ -724,20 +775,35 @@ and 'session' keys.  Other standard response keys are 'value', 'out', 'err',
 
 The presence of a particular key determines the type of the response.  For
 example, if 'value' key is present, the response is of type 'value', if
-'out' key is present the response is 'stdout' etc.  Depending on the type,
-the handler dispatches the appropriate value to one of the supplied
-handlers: VALUE-HANDLER, STDOUT-HANDLER, STDERR-HANDLER, DONE-HANDLER,
-EVAL-ERROR-HANDLER, and PPRINT-OUT-HANDLER.  If the optional
-EVAL-ERROR-HANDLER is nil, the default `nrepl-err-handler' is used.  If any
-of the other supplied handlers are nil nothing happens for the
-corresponding type of response."
+'out' key is present the response is 'stdout' etc.
+
+Depending on the type, the handler dispatches the appropriate value to one
+of the supplied handlers: VALUE-HANDLER, STDOUT-HANDLER, STDERR-HANDLER,
+DONE-HANDLER, EVAL-ERROR-HANDLER, PPRINT-OUT-HANDLER and
+CONTENT-TYPE-HANDLER.
+
+Handlers are functions of the buffer and the value they handle, except for
+the optional CONTENT-TYPE-HANDLER which should be a function of the buffer,
+content, the content-type to be handled as a list `(type attrs)'.
+
+If the optional EVAL-ERROR-HANDLER is nil, the default `nrepl-err-handler'
+is used.  If any of the other supplied handlers are nil nothing happens for
+the corresponding type of response."
   (lambda (response)
-    (nrepl-dbind-response response (value ns out err status id pprint-out)
+    (nrepl-dbind-response response (content-type content-transfer-encoding body
+                                                 value ns out err status id
+                                                 pprint-out)
       (when (buffer-live-p buffer)
         (with-current-buffer buffer
           (when (and ns (not (derived-mode-p 'clojure-mode)))
             (cider-set-buffer-ns ns))))
-      (cond (value
+      (cond ((and content-type content-type-handler)
+             (funcall content-type-handler buffer
+                      (if (string= content-transfer-encoding "base64")
+                          (base64-decode-string body)
+                        body)
+                      content-type))
+            (value
              (when value-handler
                (funcall value-handler buffer value)))
             (out
@@ -750,6 +816,9 @@ corresponding type of response."
              (when stderr-handler
                (funcall stderr-handler buffer err)))
             (status
+             (when (member "notification" status)
+               (nrepl-dbind-response response (msg type)
+                 (nrepl-notify msg type)))
              (when (member "interrupted" status)
                (message "Evaluation interrupted."))
              (when (member "eval-error" status)
@@ -780,16 +849,18 @@ corresponding type of response."
   (with-current-buffer connection
     (number-to-string (cl-incf nrepl-request-counter))))
 
-(defun nrepl-send-request (request callback connection)
+(defun nrepl-send-request (request callback connection &optional tooling)
   "Send REQUEST and register response handler CALLBACK using CONNECTION.
 REQUEST is a pair list of the form (\"op\" \"operation\" \"par1-name\"
 \"par1\" ... ). See the code of `nrepl-request:clone',
-`nrepl-request:stdin', etc.
-Return the ID of the sent message."
+`nrepl-request:stdin', etc. This expects that the REQUEST does not have a
+session already in it. This code will add it as appropriate to prevent
+connection/session drift.
+Return the ID of the sent message.
+Optional argument TOOLING Set to t if desiring the tooling session rather than the standard session."
   (with-current-buffer connection
-    (when (and (not (lax-plist-get request "session"))
-               nrepl-session)
-      (setq request (append request (list "session" nrepl-session))))
+    (when-let* ((session (if tooling nrepl-tooling-session nrepl-session)))
+      (setq request (append request `("session" ,session))))
     (let* ((id (nrepl-next-request-id connection))
            (request (cons 'dict (lax-plist-put request "id" id)))
            (message (nrepl-bencode request)))
@@ -804,19 +875,21 @@ Return the ID of the sent message."
 (declare-function cider-repl-emit-interactive-stderr "cider-repl")
 (declare-function cider--render-stacktrace-causes "cider-interaction")
 
-(defun nrepl-send-sync-request (request connection &optional abort-on-input)
+(defun nrepl-send-sync-request (request connection &optional abort-on-input tooling)
   "Send REQUEST to the nREPL server synchronously using CONNECTION.
 Hold till final \"done\" message has arrived and join all response messages
 of the same \"op\" that came along.
 If ABORT-ON-INPUT is non-nil, the function will return nil at the first
-sign of user input, so as not to hang the interface."
+sign of user input, so as not to hang the interface.
+If TOOLING, use the tooling session rather than the standard session."
   (let* ((time0 (current-time))
          (response (cons 'dict nil))
          (nrepl-ongoing-sync-request t)
          status)
     (nrepl-send-request request
                         (lambda (resp) (nrepl--merge response resp))
-                        connection)
+                        connection
+                        tooling)
     (while (and (not (member "done" status))
                 (not (and abort-on-input
                           (input-pending-p))))
@@ -848,85 +921,88 @@ sign of user input, so as not to hang the interface."
             (nrepl--mark-id-completed id)))
         response))))
 
-(defun nrepl-request:stdin (input callback connection session)
-  "Send a :stdin request with INPUT using CONNECTION and SESSION.
+(defun nrepl-request:stdin (input callback connection)
+  "Send a :stdin request with INPUT using CONNECTION.
 Register CALLBACK as the response handler."
-  (nrepl-send-request (list "op" "stdin"
-                            "stdin" input
-                            "session" session)
+  (nrepl-send-request `("op" "stdin"
+                        "stdin" ,input)
                       callback
                       connection))
 
-(defun nrepl-request:interrupt (pending-request-id callback connection session)
+(defun nrepl-request:interrupt (pending-request-id callback connection)
   "Send an :interrupt request for PENDING-REQUEST-ID.
-The request is dispatched using CONNECTION and SESSION.
+The request is dispatched using CONNECTION.
 Register CALLBACK as the response handler."
-  (nrepl-send-request (list "op" "interrupt"
-                            "session" session
-                            "interrupt-id" pending-request-id)
+  (nrepl-send-request `("op" "interrupt"
+                        "interrupt-id" ,pending-request-id)
                       callback
                       connection))
 
 (define-minor-mode cider-enlighten-mode nil nil (cider-mode " light")
   :global t)
 
-(defun nrepl--eval-request (input session &optional ns line column)
+(defun nrepl--eval-request (input &optional ns line column)
   "Prepare :eval request message for INPUT.
-SESSION and NS provide context for the request.
+NS provides context for the request.
 If LINE and COLUMN are non-nil and current buffer is a file buffer, \"line\",
 \"column\" and \"file\" are added to the message."
-  (append (and ns (list "ns" ns))
-          (list "op" "eval"
-                "session" session
-                "code" input)
-          (when cider-enlighten-mode
-            (list "enlighten" "true"))
-          (let ((file (or (buffer-file-name) (buffer-name))))
-            (when (and line column file)
-              (list "file" file
-                    "line" line
-                    "column" column)))))
+  (nconc (and ns `("ns" ,ns))
+         `("op" "eval"
+           "code" ,(substring-no-properties input))
+         (when cider-enlighten-mode
+           '("enlighten" "true"))
+         (let ((file (or (buffer-file-name) (buffer-name))))
+           (when (and line column file)
+             `("file" ,file
+               "line" ,line
+               "column" ,column)))))
 
-(defun nrepl-request:eval (input callback connection &optional session ns line column additional-params)
+(defun nrepl-request:eval (input callback connection &optional ns line column additional-params tooling)
   "Send the request INPUT and register the CALLBACK as the response handler.
-The request is dispatched via CONNECTION and SESSION.  If NS is non-nil,
+The request is dispatched via CONNECTION.  If NS is non-nil,
 include it in the request.  LINE and COLUMN, if non-nil, define the position
-of INPUT in its buffer.
+of INPUT in its buffer.  A CONNECTION uniquely determines two connections
+available: the standard interaction one and the tooling session.  If the
+tooling is desired, set TOOLING to true.
 ADDITIONAL-PARAMS is a plist to be appended to the request message."
-  (nrepl-send-request (append (nrepl--eval-request input session ns line column) additional-params)
+  (nrepl-send-request (append (nrepl--eval-request input ns line column) additional-params)
                       callback
-                      connection))
+                      connection
+                      tooling))
 
-(defun nrepl-sync-request:clone (connection)
+(defun nrepl-sync-request:clone (connection &optional tooling)
   "Sent a :clone request to create a new client session.
-The request is dispatched via CONNECTION."
+The request is dispatched via CONNECTION.
+Optional argument TOOLING Tooling is set to t if wanting the tooling session from CONNECTION."
   (nrepl-send-sync-request '("op" "clone")
-                           connection))
+                           connection
+                           nil tooling))
 
-(defun nrepl-sync-request:close (connection session)
+(defun nrepl-sync-request:close (connection)
   "Sent a :close request to close CONNECTION's SESSION."
-  (nrepl-send-sync-request (list "op" "close" "session" session)
-                           connection))
+  (nrepl-send-sync-request '("op" "close") connection)
+  (nrepl-send-sync-request '("op" "close") connection nil t)) ;; close tooling session
 
-(defun nrepl-sync-request:describe (connection &optional session)
+(defun nrepl-sync-request:describe (connection)
   "Perform :describe request for CONNECTION and SESSION."
-  (if session
-      (nrepl-send-sync-request (list "session" session "op" "describe")
-                               connection)
-    (nrepl-send-sync-request '("op" "describe")
-                             connection)))
+  (nrepl-send-sync-request '("op" "describe")
+                           connection))
 
 (defun nrepl-sync-request:ls-sessions (connection)
   "Perform :ls-sessions request for CONNECTION."
   (nrepl-send-sync-request '("op" "ls-sessions") connection))
 
-(defun nrepl-sync-request:eval (input connection session &optional ns)
+(defun nrepl-sync-request:eval (input connection &optional ns tooling)
   "Send the INPUT to the nREPL server synchronously.
-The request is dispatched via CONNECTION and SESSION.
-If NS is non-nil, include it in the request."
+The request is dispatched via CONNECTION.
+If NS is non-nil, include it in the request
+If TOOLING is non-nil the evaluation is done using the tooling nREPL
+session."
   (nrepl-send-sync-request
-   (nrepl--eval-request input session ns)
-   connection))
+   (nrepl--eval-request input ns)
+   connection
+   nil
+   tooling))
 
 (defun nrepl-sessions (connection)
   "Get a list of active sessions on the nREPL server using CONNECTION."
@@ -950,9 +1026,8 @@ Used by `nrepl-start-server-process'.")
 Return a newly created process.
 Set `nrepl-server-filter' as the process filter, which starts REPL process
 with its own buffer once the server has started.
-If CALLBACK is non-nil, it should be function of 3 arguments.  Once the
-client process is started, the function is called with the server process,
-the port, and the client buffer."
+If CALLBACK is non-nil, it should be function of 1 argument.  Once the
+client process is started, the function is called with the client buffer."
   (let* ((default-directory (or directory default-directory))
          (serv-buf (get-buffer-create (generate-new-buffer-name
                                        (nrepl-server-buffer-name directory))))
@@ -991,7 +1066,7 @@ the port, and the client buffer."
             (set-marker (process-mark process) (point)))
           (when moving
             (goto-char (process-mark process))
-            (when-let ((win (get-buffer-window)))
+            (when-let* ((win (get-buffer-window)))
               (set-window-point win (point))))))
       ;; detect the port the server is listening on from its output
       (when (string-match "nREPL server started on port \\([0-9]+\\)" output)
@@ -1031,13 +1106,18 @@ the port, and the client buffer."
 
 ;;; Messages
 
-(defcustom nrepl-log-messages t
+(defcustom nrepl-log-messages nil
   "If non-nil, log protocol messages to an nREPL messages buffer.
 
 This is extremely useful for debug purposes, as it allows you to
-inspect the communication between Emacs and an nREPL server."
+inspect the communication between Emacs and an nREPL server.
+
+Enabling the logging might have a negative impact on performance,
+so it's not recommended to keep it enabled unless you need to
+debug something."
   :type 'boolean
-  :group 'nrepl)
+  :group 'nrepl
+  :safe #'booleanp)
 
 (defconst nrepl-message-buffer-max-size 1000000
   "Maximum size for the nREPL message buffer.
@@ -1054,9 +1134,12 @@ operations.")
 
 (defvar nrepl-messages-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "n") #'next-line)
-    (define-key map (kbd "p") #'previous-line)
+    (define-key map (kbd "n")   #'next-line)
+    (define-key map (kbd "p")   #'previous-line)
     (define-key map (kbd "TAB") #'forward-button)
+    (define-key map (kbd "RET") #'nrepl-log-expand-button)
+    (define-key map (kbd "e")   #'nrepl-log-expand-button)
+    (define-key map (kbd "E")   #'nrepl-log-expand-all-buttons)
     (define-key map (kbd "<backtab>") #'backward-button)
     map))
 
@@ -1064,8 +1147,8 @@ operations.")
   "Major mode for displaying nREPL messages.
 
 \\{nrepl-messages-mode-map}"
-  (setq buffer-read-only t)
-  (setq-local truncate-lines t)
+  (when cider-special-mode-truncate-lines
+    (setq-local truncate-lines t))
   (setq-local electric-indent-chars nil)
   (setq-local comment-start ";")
   (setq-local comment-end "")
@@ -1080,12 +1163,14 @@ operations.")
 
 (defun nrepl-log-message (msg type)
   "Log the nREPL MSG.
-
-TYPE is either request or response.
-
-The message is logged to a buffer described by
-`nrepl-message-buffer-name-template'."
+TYPE is either request or response.  The message is logged to a buffer
+described by `nrepl-message-buffer-name-template'."
   (when nrepl-log-messages
+    ;; append a time-stamp to the message before logging it
+    ;; the time-stamps are quite useful for debugging
+    (setq msg (cons (car msg)
+                    (lax-plist-put (cdr msg) "time-stamp"
+                                   (format-time-string "%Y-%m-%0d %H:%M:%S.%N"))))
     (with-current-buffer (nrepl-messages-buffer (current-buffer))
       (setq buffer-read-only nil)
       (when (> (buffer-size) nrepl-message-buffer-max-size)
@@ -1093,11 +1178,22 @@ The message is logged to a buffer described by
         (re-search-forward "^(" nil t)
         (delete-region (point-min) (- (point) 1)))
       (goto-char (point-max))
-      (nrepl--pp (nrepl-decorate-msg msg type)
-                 (nrepl--message-color (lax-plist-get (cdr msg) "id")))
-      (when-let ((win (get-buffer-window)))
+      (nrepl-log-pp-object (nrepl-decorate-msg msg type)
+                           (nrepl-log--message-color (lax-plist-get (cdr msg) "id"))
+                           t)
+      (when-let* ((win (get-buffer-window)))
         (set-window-point win (point-max)))
       (setq buffer-read-only t))))
+
+(defun nrepl-toggle-message-logging ()
+  "Toggle the value of `nrepl-log-messages' between nil and t.
+
+This in effect enables or disables the logging of nREPL messages."
+  (interactive)
+  (setq nrepl-log-messages (not nrepl-log-messages))
+  (if nrepl-log-messages
+      (message "nREPL message logging enabled")
+    (message "nREPL message logging disabled")))
 
 (defcustom nrepl-message-colors
   '("red" "brown" "coral" "orange" "green" "deep sky blue" "blue" "dark violet")
@@ -1105,7 +1201,58 @@ The message is logged to a buffer described by
   :type '(repeat color)
   :group 'nrepl)
 
-(defun nrepl--message-color (id)
+(defun nrepl-log-expand-button (&optional button)
+  "Expand the objects hidden in BUTTON's :nrepl-object property.
+BUTTON defaults the button at point."
+  (interactive)
+  (if-let* ((button (or button (button-at (point)))))
+      (let* ((start (overlay-start button))
+             (end   (overlay-end   button))
+             (obj   (overlay-get button :nrepl-object))
+             (inhibit-read-only t))
+        (save-excursion
+          (goto-char start)
+          (delete-overlay button)
+          (delete-region start end)
+          (nrepl-log-pp-object obj)
+          (delete-char -1)))
+    (error "No button at point")))
+
+(defun nrepl-log-expand-all-buttons ()
+  "Expand all buttons in nREPL log buffer."
+  (interactive)
+  (if (not (eq major-mode 'nrepl-messages-mode))
+      (user-error "Not in a `nrepl-messages-mode'")
+    (save-excursion
+      (let* ((pos (point-min))
+             (button (next-button pos)))
+        (while button
+          (setq pos (overlay-start button))
+          (nrepl-log-expand-button button)
+          (setq button (next-button pos)))))))
+
+(defun nrepl-log--expand-button-mouse (event)
+  "Expand the text hidden under overlay button.
+EVENT gives the button position on window."
+  (interactive "e")
+  (pcase (elt event 1)
+    (`(,window ,_ ,_ ,_ ,_ ,point . ,_)
+     (with-selected-window window
+       (nrepl-log-expand-button (button-at point))))))
+
+(defun nrepl-log-insert-button (label object)
+  "Insert button with LABEL and :nrepl-object property as OBJECT."
+  (insert-button label
+                 :nrepl-object object
+                 'action #'nrepl-log-expand-button
+                 'face 'link
+                 'help-echo "RET: Expand object."
+                 ;; Workaround for bug#1568 (don't use local-map here; it
+                 ;; overwrites major mode map.)
+                 'keymap `(keymap (mouse-1 . nrepl-log--expand-button-mouse)))
+  (insert "\n"))
+
+(defun nrepl-log--message-color (id)
   "Return the color to use when pretty-printing the nREPL message with ID.
 If ID is nil, return nil."
   (when id
@@ -1113,67 +1260,73 @@ If ID is nil, return nil."
       (mod (length nrepl-message-colors))
       (nth nrepl-message-colors))))
 
-(defcustom nrepl-dict-max-message-size 5
-  "Max number of lines a dict can have before being truncated.
-Set this to nil to prevent truncation."
-  :type 'integer)
-
-(defun nrepl--expand-button (button)
-  "Expand the text hidden under overlay BUTTON."
-  (delete-overlay button))
-
-(defun nrepl--expand-button-mouse (event)
-  "Expand the text hidden under overlay button.
-EVENT gives the button position on window."
-  (interactive "e")
-  (pcase (elt event 1)
-    (`(,window ,_ ,_ ,_ ,_ ,point . ,_)
-     (with-selected-window window
-       (nrepl--expand-button (button-at point))))))
-
-(define-button-type 'nrepl--collapsed-dict
-  'display "..."
-  'action #'nrepl--expand-button
-  'face 'link
-  'help-echo "RET: Expand dict.")
-
-(defun nrepl--pp (object &optional foreground)
-  "Pretty print nREPL OBJECT, delimited using FOREGROUND."
-  (if (not (and (listp object)
-                (memq (car object) '(<-- --> dict))))
-      (progn (when (stringp object)
-               (setq object (substring-no-properties object)))
-             (pp object (current-buffer))
-             (unless (listp object) (insert "\n")))
+(defun nrepl-log--pp-listlike (object &optional foreground button)
+  "Pretty print nREPL list like OBJECT.
+FOREGROUND and BUTTON are as in `nrepl-log-pp-object'."
+  (cl-flet ((color (str)
+                   (propertize str 'face
+                               (append '(:weight ultra-bold)
+                                       (when foreground `(:foreground ,foreground))))))
     (let ((head (format "(%s" (car object))))
-      (cl-flet ((color (str)
-                       (propertize str 'face (append '(:weight ultra-bold)
-                                                     (when foreground `(:foreground ,foreground))))))
-        (insert (color head))
-        (let ((indent (+ 2 (- (current-column) (length head))))
-              (l (point)))
-          (if (null (cdr object))
-              (insert ")\n")
-            (insert " \n")
-            (cl-loop for l on (cdr object) by #'cddr
-                     do (let ((str (format "%s%s  " (make-string indent ?\s)
-                                           (propertize (car l) 'face
-                                                       ;; Only highlight top-level keys.
-                                                       (unless (eq (car object) 'dict)
-                                                         'font-lock-keyword-face)))))
-                          (insert str)
-                          (nrepl--pp (cadr l))))
-            (when (eq (car object) 'dict)
-              (delete-char -1)
-              (let ((truncate-lines t))
-                (when (and nrepl-dict-max-message-size
-                           (> (count-screen-lines l (point) t)
-                              nrepl-dict-max-message-size))
-                  (make-button (1+ l) (point)
-                               :type 'nrepl--collapsed-dict
-                               ;; Workaround for bug#1568.
-                               'local-map '(keymap (mouse-1 . nrepl--expand-button-mouse))))))
-            (insert (color ")\n"))))))))
+      (insert (color head))
+      (if (null (cdr object))
+          (insert ")\n")
+        (let* ((indent (+ 2 (- (current-column) (length head))))
+               (sorted-pairs (sort (seq-partition (cl-copy-list (cdr object)) 2)
+                                   (lambda (a b)
+                                     (string< (car a) (car b)))))
+               (name-lengths (seq-map (lambda (pair) (length (car pair))) sorted-pairs))
+               (longest-name (seq-max name-lengths))
+               ;; Special entries are displayed first
+               (specialq (lambda (pair) (seq-contains '("id" "op" "session" "time-stamp") (car pair))))
+               (special-pairs (seq-filter specialq sorted-pairs))
+               (not-special-pairs (seq-remove specialq sorted-pairs))
+               (all-pairs (seq-concatenate 'list special-pairs not-special-pairs))
+               (sorted-object (apply 'seq-concatenate 'list all-pairs)))
+          (insert "\n")
+          (cl-loop for l on sorted-object by #'cddr
+                   do (let ((indent-str (make-string indent ?\s))
+                            (name-str (propertize (car l) 'face
+                                                  ;; Only highlight top-level keys.
+                                                  (unless (eq (car object) 'dict)
+                                                    'font-lock-keyword-face)))
+                            (spaces-str (make-string (- longest-name (length (car l))) ?\s)))
+                        (insert (format "%s%s%s " indent-str name-str spaces-str))
+                        (nrepl-log-pp-object (cadr l) nil button)))
+          (when (eq (car object) 'dict)
+            (delete-char -1))
+          (insert (color ")\n")))))))
+
+(defun nrepl-log-pp-object (object &optional foreground button)
+  "Pretty print nREPL OBJECT, delimited using FOREGROUND.
+If BUTTON is non-nil, try making a button from OBJECT instead of inserting
+it into the buffer."
+  (let ((min-dict-fold-size   1)
+        (min-list-fold-size   10)
+        (min-string-fold-size 60))
+    (if-let* ((head (car-safe object)))
+        ;; list-like objects
+        (cond
+         ;; top level dicts (always expanded)
+         ((memq head '(<-- -->))
+          (nrepl-log--pp-listlike object foreground button))
+         ;; inner dicts
+         ((eq head 'dict)
+          (if (and button (> (length object) min-dict-fold-size))
+              (nrepl-log-insert-button "(dict ...)" object)
+            (nrepl-log--pp-listlike object foreground button)))
+         ;; lists
+         (t
+          (if (and button (> (length object) min-list-fold-size))
+              (nrepl-log-insert-button (format "(%s ...)" (prin1-to-string head)) object)
+            (pp object (current-buffer)))))
+      ;; non-list objects
+      (if (stringp object)
+          (if (and button (> (length object) min-string-fold-size))
+              (nrepl-log-insert-button (format "\"%s...\"" (substring object 0 min-string-fold-size)) object)
+            (insert (prin1-to-string object) "\n"))
+        (pp object (current-buffer))
+        (insert "\n")))))
 
 (defun nrepl-messages-buffer-name (conn)
   "Return the name for the message buffer matching CONN."
@@ -1206,7 +1359,7 @@ The default buffer name is *nrepl-error*."
     (setq buffer-read-only nil)
     (goto-char (point-max))
     (insert msg)
-    (when-let ((win (get-buffer-window)))
+    (when-let* ((win (get-buffer-window)))
       (set-window-point win (point-max)))
     (setq buffer-read-only t)))
 

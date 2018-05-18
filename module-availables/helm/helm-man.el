@@ -1,6 +1,6 @@
 ;;; helm-man.el --- Man and woman UI -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2018 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -43,12 +43,11 @@
           (const :tag "Man" Man-getpage-in-background)
           (const :tag "Woman" woman)))
 
-(defcustom helm-man-format-switches "-l %s"
+(defcustom helm-man-format-switches (cl-case system-type
+                                      ((darwin macos) "%s")
+                                      (t "-l %s"))
   "Arguments to pass to the `manual-entry' function.
-Arguments are passed to `manual-entry' with `format.'
-Default use \"-l\" which may not be supported on old man versions,
-in this case use \"%s\" as value to pass only the filename as argument.
-See Issue #1035"
+Arguments are passed to `manual-entry' with `format.'"
   :group 'helm-man
   :type 'string)
 
@@ -60,19 +59,23 @@ source.")
 
 (defun helm-man-default-action (candidate)
   "Default action for jumping to a woman or man page from helm."
-  (let ((wfiles (mapcar
-                 'car (woman-file-name-all-completions candidate))))
+  (let ((wfiles (mapcar #'car (woman-file-name-all-completions candidate))))
     (condition-case nil
-        (if (> (length wfiles) 1)
-            (let ((file (helm-comp-read
-                         "ManFile: " wfiles :must-match t)))
-              (if (eq helm-man-or-woman-function 'Man-getpage-in-background)
-                  (manual-entry (format helm-man-format-switches file))
-                  (woman-find-file file)))
-          (funcall helm-man-or-woman-function candidate))
-      ;; If woman is unable to format correctly
-      ;; use man instead.
-      (error (kill-buffer)              ; Kill woman buffer.
+        (let ((file (if (cdr wfiles)
+                        (helm-comp-read "ManFile: " wfiles :must-match t)
+                      (car wfiles))))
+          (if (eq helm-man-or-woman-function 'Man-getpage-in-background)
+              (manual-entry (format helm-man-format-switches file))
+            (condition-case nil
+                (woman-find-file file)
+              ;; If woman is unable to format correctly
+              ;; try Man instead.
+              (error (kill-buffer)
+                     (manual-entry (format helm-man-format-switches file))))))
+      ;; If even Man failed with file as argument, try again with Man
+      ;; but using Topic candidate instead of the file calculated by
+      ;; woman.
+      (error (kill-buffer)
              (Man-getpage-in-background candidate)))))
 
 (defun helm-man--init ()
@@ -93,7 +96,8 @@ source.")
     :filtered-candidate-transformer
      (lambda (candidates _source)
        (sort candidates #'helm-generic-sort-fn))
-    :action  '(("Display Man page" . helm-man-default-action))))
+    :action  '(("Display Man page" . helm-man-default-action))
+    :group 'helm-man))
 
 ;;;###autoload
 (defun helm-man-woman (arg)
@@ -107,7 +111,7 @@ With a prefix arg reinitialize the cache."
 (provide 'helm-man)
 
 ;; Local Variables:
-;; byte-compile-warnings: (not cl-functions obsolete)
+;; byte-compile-warnings: (not obsolete)
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:

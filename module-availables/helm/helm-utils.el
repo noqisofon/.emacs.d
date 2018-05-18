@@ -1,6 +1,6 @@
 ;;; helm-utils.el --- Utilities Functions for helm. -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2018 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -20,12 +20,12 @@
 (require 'cl-lib)
 (require 'helm)
 (require 'helm-help)
-(require 'compile) ; Fixme: Is this needed?
-(require 'dired)
+(eval-when-compile (require 'dired))
 
 (declare-function helm-find-files-1 "helm-files.el" (fname &optional preselect))
 (declare-function popup-tip "ext:popup")
 (defvar winner-boring-buffers)
+(defvar helm-show-completion-overlay)
 
 
 (defgroup helm-utils nil
@@ -64,7 +64,7 @@ It is a float, usually 1024.0 but could be 1000.0 on some systems."
   :type 'integer)
 
 (defcustom helm-sources-using-help-echo-popup '("Moccur" "Imenu in all buffers"
-                                                "Ack-Grep" "AG" "Gid" "Git-Grep")
+                                                "Ack-Grep" "AG" "RG" "Gid" "Git-Grep")
   "Show the buffer name or the filename in a popup at selection."
   :group 'helm-utils
   :type '(repeat (choice string)))
@@ -108,7 +108,7 @@ In this case last position is added to the register
     ("&yen"     . 165)  ;; ¥
     ("&brvbar;" . 166)  ;; ¦
     ("&sect;"   . 167)  ;; §
-    ("&uml;"    . 32)   ;; SPC 
+    ("&uml;"    . 32)   ;; SPC
     ("&copy;"   . 169)  ;; ©
     ("&ordf;"   . 97)   ;; a
     ("&laquo;"  . 171)  ;; «
@@ -122,7 +122,7 @@ In this case last position is added to the register
     ("&micro;"  . 956)  ;; μ
     ("&para;"   . 182)  ;; ¶
     ("&middot;" . 183)  ;; ·
-    ("&cedil;"  . 32)   ;; SPC 
+    ("&cedil;"  . 32)   ;; SPC
     ("&sup1;"   . 49)   ;; 1
     ("&ordm;"   . 111)  ;; o
     ("&raquo;"  . 187)  ;; »
@@ -198,6 +198,9 @@ In this case last position is added to the register
     ("&shy;"    . 173)) ;; ­
 
   "Table of html character entities and values.")
+
+(defvar helm-find-many-files-after-hook nil
+  "Hook that run at end of `helm-find-many-files'.")
 
 ;;; Faces.
 ;;
@@ -215,36 +218,183 @@ In this case last position is added to the register
 ;;; Utils functions
 ;;
 ;;
-(defun helm-switch-to-buffers (buffer-or-name &optional other-window)
-  "Switch to buffer BUFFER-OR-NAME.
-If more than one buffer marked switch to these buffers in separate windows.
-If OTHER-WINDOW is specified keep current-buffer and switch to others buffers
-in separate windows."
-  (let* ((mkds (helm-marked-candidates))
-         (size (/ (window-height) (length mkds))))
-    (or (<= window-min-height size)
-        (error "Too many buffers to visit simultaneously."))
-    (helm-aif (cdr mkds)
-        (progn
-          (if other-window
-              (switch-to-buffer-other-window (car mkds))
-            (switch-to-buffer (car mkds)))
-          (save-selected-window
-            (cl-loop for b in it
-                  do (progn
-                       (select-window (split-window))
-                       (switch-to-buffer b)))))
-      (if other-window
-          (switch-to-buffer-other-window buffer-or-name)
-        (switch-to-buffer buffer-or-name)))))
+(defcustom helm-window-prefer-horizontal-split nil
+  "Maybe switch to other window vertically when non nil.
 
-(defun helm-switch-to-buffers-other-window (buffer-or-name)
-  "switch to buffer BUFFER-OR-NAME in other window.
-See `helm-switch-to-buffers' for switching to marked buffers."
-  (helm-switch-to-buffers buffer-or-name t))
+Possible values are t, nil and `decide'.
+
+When t switch vertically.
+When nil switch horizontally.
+When `decide' try to guess if it is possible to switch vertically
+according to the setting of `split-width-threshold' and the size of
+the window from where splitting is done.
+
+Note that when using `decide' and `split-width-threshold' is nil, the
+behavior is the same that with a nil value."
+  :group 'helm-utils
+  :type '(choice
+           (const :tag "Split window vertically" t)
+           (const :tag "Split window horizontally" nil)
+           (symbol :tag "Guess how to split window" 'decide)))
+
+(defcustom helm-window-show-buffers-function #'helm-window-default-split-fn
+  "The default function to use when opening several buffers at once.
+It is typically used to rearrange windows."
+  :group 'helm-utils
+  :type '(choice
+          (function :tag "Split windows vertically or horizontally"
+                    helm-window-default-split-fn)
+          (function :tag "Split in alternate windows"
+                    helm-window-alternate-split-fn)
+          (function :tag "Split windows in mosaic"
+                    helm-window-mosaic-fn)))
+
+(defun helm-window-show-buffers (buffers &optional other-window)
+  "Show BUFFERS.
+
+If more than one buffer marked switch to these buffers in separate windows.
+If OTHER-WINDOW is non-nil, keep current buffer and switch to others buffers
+in separate windows.
+If a prefix arg is given split windows vertically."
+  (let ((initial-ow-fn (if (cdr (window-list))
+                           #'switch-to-buffer-other-window
+                         #'helm-window-other-window)))
+    (if (cdr buffers)
+        (funcall helm-window-show-buffers-function buffers
+                 (and other-window initial-ow-fn))
+      (if other-window
+          (funcall initial-ow-fn (car buffers))
+        (switch-to-buffer (car buffers))))))
+
+(defun helm-window-default-split-fn (candidates &optional other-window-fn)
+  "Split windows in one direction and balance them.
+
+Direction can be controlled via `helm-window-prefer-horizontal-split'.
+If a prefix arg is given split windows the other direction.
+This function is suitable for `helm-window-show-buffers-function'."
+  (if other-window-fn
+      (funcall other-window-fn (car candidates))
+    (switch-to-buffer (car candidates)))
+  (save-selected-window
+    (cl-loop with nosplit
+             for b in (cdr candidates)
+             when nosplit return
+             (message "Too many buffers to visit simultaneously")
+             do (condition-case _err
+                    (helm-window-other-window b 'balance)
+                  (error (setq nosplit t) nil)))))
+
+(defun helm-window-alternate-split-fn (candidates &optional other-window-fn)
+  "Split windows horizontally and vertically in alternate fashion.
+
+Direction can be controlled via `helm-window-prefer-horizontal-split'.
+If a prefix arg is given split windows the other direction.
+This function is suitable for `helm-window-show-buffers-function'."
+  (if other-window-fn
+      (funcall other-window-fn (car candidates))
+    (switch-to-buffer (car candidates)))
+  (let (right-side)
+    (save-selected-window
+      (cl-loop with nosplit
+               for b in (cdr candidates)
+               when nosplit return
+               (message "Too many buffers to visit simultaneously")
+               do (condition-case _err
+                      (let ((helm-current-prefix-arg right-side))
+                        (helm-window-other-window b)
+                        (setq right-side (not right-side)))
+                    (error (setq nosplit t) nil))))))
+
+(defun helm-window-mosaic-fn (candidates &optional other-window-fn)
+  "Make an as-square-as-possible window mosaic of the CANDIDATES buffers.
+
+If rectangular, the long side is in the direction given by
+`helm-window-prefer-horizontal-split': if non-nil, it is horizontal, vertical
+otherwise.
+If OTHER-WINDOW-FN is non-nil, current windows are included in the mosaic.
+This function is suitable for `helm-window-show-buffers-function'."
+  (when other-window-fn
+    (setq candidates (append (mapcar 'window-buffer (window-list)) candidates)))
+  (delete-other-windows)
+  (let* ((helm-window-prefer-horizontal-split
+          (if (eq helm-window-prefer-horizontal-split 'decide)
+              (and (numberp split-width-threshold)
+                   (>= (window-width (selected-window))
+                       split-width-threshold))
+            helm-window-prefer-horizontal-split))
+         mosaic-length-tile-count
+         mosaic-width-tile-count
+         mosaic-length-tile-size
+         mosaic-width-tile-size
+         next-window)
+    ;; If 4 tiles, make 2x2 mosaic.
+    ;; If 5-6 tiles, make 2x3 mosaic with direction depending on `helm-window-prefer-horizontal-split'.
+    ;; If 7-9 tiles, make 3x3 mosaic.  And so on.
+    (setq mosaic-length-tile-count (ceiling (sqrt (length candidates))))
+    (setq mosaic-width-tile-count
+          (if (<= (length candidates) (* mosaic-length-tile-count (1- mosaic-length-tile-count)))
+              (1- mosaic-length-tile-count)
+            mosaic-length-tile-count))
+    ;; We lower-bound the tile size, otherwise the function would
+    ;; fail during the first inner split.
+    ;; There is consequently no need to check for errors when
+    ;; splitting.
+    (let ((frame-mosaic-length-direction-size (frame-height))
+          (frame-mosaic-width-direction-size (frame-width))
+          (window-mosaic-length-direction-min-size window-min-height)
+          (window-mosaic-width-direction-min-size window-min-width))
+      (if helm-window-prefer-horizontal-split
+          (setq frame-mosaic-length-direction-size (frame-width)
+                frame-mosaic-width-direction-size (frame-height)
+                window-mosaic-length-direction-min-size window-min-width
+                window-mosaic-width-direction-min-size window-min-height))
+      (setq mosaic-length-tile-size (max
+                                     (/ frame-mosaic-length-direction-size mosaic-length-tile-count)
+                                     window-mosaic-length-direction-min-size)
+            mosaic-width-tile-size (max
+                                    (/ frame-mosaic-width-direction-size mosaic-width-tile-count)
+                                    window-mosaic-width-direction-min-size))
+      ;; Shorten `candidates' to `max-tiles' elements.
+      (let ((max-tiles (* (/ frame-mosaic-length-direction-size mosaic-length-tile-size)
+                          (/ frame-mosaic-width-direction-size mosaic-width-tile-size))))
+        (when (> (length candidates) max-tiles)
+          (message "Too many buffers to visit simultaneously")
+          (setcdr (nthcdr (- max-tiles 1) candidates) nil))))
+    ;; Make the mosaic.
+    (while candidates
+      (when (> (length candidates) mosaic-length-tile-count)
+        (setq next-window (split-window nil
+                                        mosaic-width-tile-size
+                                        (not helm-window-prefer-horizontal-split))))
+      (switch-to-buffer (pop candidates))
+      (dotimes (_ (min (1- mosaic-length-tile-count) (length candidates)))
+        (select-window (split-window nil
+                                     mosaic-length-tile-size
+                                     helm-window-prefer-horizontal-split))
+        (switch-to-buffer (pop candidates)))
+      (when next-window
+        (select-window next-window)))))
+
+(defun helm-window-other-window (buffer-or-name &optional balance)
+  "Switch to BUFFER-OR-NAME in other window.
+Direction can be controlled via `helm-window-prefer-horizontal-split'.
+If a prefix arg is given split windows the other direction.
+When argument BALANCE is provided `balance-windows'."
+  (let* ((helm-window-prefer-horizontal-split
+          (if (eq helm-window-prefer-horizontal-split 'decide)
+              (and (numberp split-width-threshold)
+                   (>= (window-width (selected-window))
+                       split-width-threshold))
+            helm-window-prefer-horizontal-split))
+         (right-side (if helm-window-prefer-horizontal-split
+                         (not helm-current-prefix-arg)
+                       helm-current-prefix-arg)))
+    (select-window (split-window nil nil right-side))
+    (and balance (balance-windows))
+    (switch-to-buffer buffer-or-name)))
 
 (cl-defun helm-current-buffer-narrowed-p (&optional
-                                            (buffer helm-current-buffer))
+                                          (buffer helm-current-buffer))
   "Check if BUFFER is narrowed.
 Default is `helm-current-buffer'."
   (with-current-buffer buffer
@@ -255,18 +405,25 @@ Default is `helm-current-buffer'."
 
 (defun helm-goto-char (loc)
   "Go to char, revealing if necessary."
+  (require 'org) ; On some old Emacs versions org may not be loaded.
   (goto-char loc)
-  (when (or (eq major-mode 'org-mode)
-            (and (boundp 'outline-minor-mode)
-                 outline-minor-mode))
-    (require 'org) ; On some old Emacs versions org may not be loaded.
-    (org-reveal)))
+  (let ((fn (cond ((eq major-mode 'org-mode) #'org-reveal)
+                  ((and (boundp 'outline-minor-mode)
+                        outline-minor-mode)
+                   (lambda () (outline-flag-subtree nil))))))
+    ;; outline may fail in some conditions e.g. with markdown enabled
+    ;; (issue #1919).
+    (condition-case nil
+        (and fn (funcall fn))
+      (error nil))))
 
 (defun helm-goto-line (lineno &optional noanim)
   "Goto LINENO opening only outline headline if needed.
 Animation is used unless NOANIM is non--nil."
   (helm-log-run-hook 'helm-goto-line-before-hook)
   (helm-match-line-cleanup)
+  (with-helm-current-buffer
+    (unless helm-yank-point (setq helm-yank-point (point))))
   (goto-char (point-min))
   (helm-goto-char (point-at-bol lineno))
   (unless noanim
@@ -331,11 +488,13 @@ from its directory."
   (interactive)
   (with-helm-alive-p
     (require 'helm-grep)
+    (require 'helm-elisp)
     (helm-run-after-exit
      (lambda (f)
        ;; Ensure specifics `helm-execute-action-at-once-if-one'
        ;; fns don't run here.
-       (let (helm-execute-action-at-once-if-one)
+       (let (helm-execute-action-at-once-if-one
+             helm-actions-inherit-frame-settings) ; use this-command
          (if (file-exists-p f)
              (helm-find-files-1 (file-name-directory f)
                                 (concat
@@ -364,17 +523,18 @@ from its directory."
                          (eq major-mode 'org-agenda-mode))
                        org-directory
                        (expand-file-name org-directory))
-                  (with-current-buffer buf default-directory)))
+                  (with-current-buffer buf
+                    (expand-file-name default-directory))))
          ;; imenu (marker).
          (marker
           (or (buffer-file-name (marker-buffer (cdr sel)))
               default-preselection))
          ;; Bookmark.
          (bmk (helm-aif (bookmark-get-filename bmk)
-                  (if (and ffap-url-regexp
-                           (string-match ffap-url-regexp it))
+                  (if (and helm--url-regexp
+                           (string-match helm--url-regexp it))
                       it (expand-file-name it))
-                default-directory))
+                (expand-file-name default-directory)))
          ((and (stringp sel) (or (file-remote-p sel)
                                  (file-exists-p sel)))
           (expand-file-name sel))
@@ -384,11 +544,17 @@ from its directory."
          ;; Occur.
          (grep-line
           (with-current-buffer (get-buffer (car grep-line))
-            (or (buffer-file-name) default-directory)))
+            (expand-file-name (or (buffer-file-name) default-directory))))
          ;; Url.
-         ((and (stringp sel) ffap-url-regexp (string-match ffap-url-regexp sel)) sel)
+         ((and (stringp sel) helm--url-regexp (string-match helm--url-regexp sel)) sel)
+         ;; Exit brutally from a `with-helm-show-completion'
+         ((and helm-show-completion-overlay
+               (overlayp helm-show-completion-overlay))
+          (delete-overlay helm-show-completion-overlay)
+          (remove-hook 'helm-move-selection-after-hook 'helm-show-completion)
+          (expand-file-name default-preselection))
          ;; Default.
-         (t default-preselection))))))
+         (t (expand-file-name default-preselection)))))))
 (put 'helm-quit-and-find-file 'helm-only t)
 
 (defun helm-generic-sort-fn (s1 s2)
@@ -399,7 +565,7 @@ that is sorting is done against real value of candidate."
          (reg1  (concat "\\_<" qpattern "\\_>"))
          (reg2  (concat "\\_<" qpattern))
          (reg3  helm-pattern)
-         (split (split-string helm-pattern))
+         (split (helm-mm-split-pattern helm-pattern))
          (str1  (if (consp s1) (cdr s1) s1))
          (str2  (if (consp s2) (cdr s2) s2))
          (score (lambda (str r1 r2 r3 lst)
@@ -424,15 +590,6 @@ that is sorting is done against real value of candidate."
           ((= sc1 sc2)
            (< (length str1) (length str2)))
           (t (> sc1 sc2)))))
-
-(defun helm-ff-get-host-from-tramp-invalid-fname (fname)
-  "Extract hostname from an incomplete tramp file name.
-Return nil on valid file name remote or not."
-  (let* ((str (helm-basename fname))
-         (split (split-string str ":" t))
-         (meth (car (member (car split)
-                            (helm-ff-get-tramp-methods))))) 
-    (when meth (car (last split)))))
 
 (cl-defun helm-file-human-size (size &optional (kbsize helm-default-kbsize))
   "Return a string showing SIZE of a file in human readable form.
@@ -555,6 +712,13 @@ If STRING is non--nil return instead a space separated string."
             (mapconcat 'identity (list type user group other) " ")
           (list :mode-type type :user user :group group :other other))))
 
+(defun helm-format-columns-of-files (files)
+  "Same as `dired-format-columns-of-files'.
+Inlined here for compatibility."
+  (let ((beg (point)))
+    (completion--insert-strings files)
+    (put-text-property beg (point) 'mouse-face nil)))
+
 (defmacro with-helm-display-marked-candidates (buffer-or-name candidates &rest body)
   (declare (indent 0) (debug t))
   (helm-with-gensyms (buffer window)
@@ -563,11 +727,11 @@ If STRING is non--nil return instead a space separated string."
             (helm-split-window-default-side
              (if (eq helm-split-window-default-side 'same)
                  'below helm-split-window-default-side))
-            helm-split-window-in-side-p
+            helm-split-window-inside-p
             helm-reuse-last-window-split-state
             ,window)
        (with-current-buffer ,buffer
-         (dired-format-columns-of-files ,candidates))
+         (helm-format-columns-of-files ,candidates))
        (unwind-protect
             (with-selected-window
                 (setq ,window (temp-buffer-window-show
@@ -588,46 +752,77 @@ If STRING is non--nil return instead a space separated string."
   "Highlight and underline current position"
   (let* ((start (or start (line-beginning-position)))
          (end (or end (1+ (line-end-position))))
-         (start-match (if (or (null helm-highlight-matches-around-point-max-lines)
-                              (zerop helm-highlight-matches-around-point-max-lines))
-                          start
-                        (save-excursion
-                          (forward-line
-                           (- helm-highlight-matches-around-point-max-lines))
-                          (point-at-bol))))
-         (end-match   (if (or (null helm-highlight-matches-around-point-max-lines)
-                              (zerop helm-highlight-matches-around-point-max-lines))
-                          end
-                        (save-excursion
-                          (forward-line
-                           helm-highlight-matches-around-point-max-lines)
-                          (point-at-eol))))
-         (args (list start end buf)))
+         start-match end-match
+         (args (list start end buf))
+         (case-fold-search (helm-set-case-fold-search)))
+    ;; Highlight the current line.
     (if (not helm-match-line-overlay)
         (setq helm-match-line-overlay (apply 'make-overlay args))
       (apply 'move-overlay helm-match-line-overlay args))
     (overlay-put helm-match-line-overlay
                  'face (or face 'helm-selection-line))
-    (catch 'empty-line
-      (cl-loop with ov
-               for r in (helm-remove-if-match
-                         "\\`!" (split-string helm-input))
-               do (save-excursion
-                    (goto-char start-match)
-                    (while (condition-case _err
-                               (if helm-migemo-mode
-                                   (helm-mm-migemo-forward r end-match t)
-                                 (re-search-forward r end-match t))
-                             (invalid-regexp nil))
-                      (let ((s (match-beginning 0))
-                            (e (match-end 0)))
-                        (if (= s e)
-                            (throw 'empty-line nil)
-                          (push (setq ov (make-overlay s e))
-                                helm--match-item-overlays)
-                          (overlay-put ov 'face 'helm-match-item)
-                          (overlay-put ov 'priority 1)))))))
+    ;; Now highlight matches only if we are in helm session, we are
+    ;; maybe coming from helm-grep-mode or helm-moccur-mode buffers.
+    (when helm-alive-p
+      (if (or (null helm-highlight-matches-around-point-max-lines)
+              (zerop helm-highlight-matches-around-point-max-lines))
+          (setq start-match start
+                end-match   end)
+          (setq start-match
+                (save-excursion
+                  (forward-line
+                   (- helm-highlight-matches-around-point-max-lines))
+                  (point-at-bol))
+                  end-match
+                  (save-excursion
+                    (forward-line
+                     helm-highlight-matches-around-point-max-lines)
+                    (point-at-bol))))
+      (catch 'empty-line
+        (cl-loop with ov
+                 for r in (helm-remove-if-match
+                           "\\`!" (helm-mm-split-pattern
+                                   (if (with-helm-buffer
+                                         ;; Needed for highlighting AG matches.
+                                         (assq 'pcre (helm-get-current-source)))
+                                       (helm--translate-pcre-to-elisp helm-input)
+                                       helm-input)))
+                 do (save-excursion
+                      (goto-char start-match)
+                      (while (condition-case _err
+                                 (if helm-migemo-mode
+                                     (helm-mm-migemo-forward r end-match t)
+                                     (re-search-forward r end-match t))
+                               (invalid-regexp nil))
+                        (let ((s (match-beginning 0))
+                              (e (match-end 0)))
+                          (if (= s e)
+                              (throw 'empty-line nil)
+                              (push (setq ov (make-overlay s e))
+                                    helm--match-item-overlays)
+                              (overlay-put ov 'face 'helm-match-item)
+                              (overlay-put ov 'priority 1))))))))
     (recenter)))
+
+(defun helm--translate-pcre-to-elisp (regexp)
+  "Should translate pcre REGEXP to elisp regexp.
+Assume regexp is a pcre based regexp."
+  (with-temp-buffer
+    (insert " " regexp " ")
+    (goto-char (point-min))
+    (save-excursion
+      ;; match (){}| unquoted
+      (helm-awhile (and (re-search-forward "\\([(){}|]\\)" nil t)
+                        (match-string 1))
+        (let ((pos (match-beginning 1)))
+          (if (eql (char-before pos) ?\\)
+              (delete-region pos (1- pos))
+              (replace-match (concat "\\" it) t t nil 1)))))
+    ;; match \s or \S
+    (helm-awhile (and (re-search-forward "\\S\\?\\(\\s\\[sS]\\)[^-]" nil t)
+                      (match-string 1))
+      (replace-match (concat it "-") t t nil 1))
+    (buffer-substring (1+ (point-min)) (1- (point-max)))))
 
 (defun helm-match-line-cleanup ()
   (when helm-match-line-overlay
@@ -635,6 +830,10 @@ If STRING is non--nil return instead a space separated string."
     (setq helm-match-line-overlay nil))
   (when helm--match-item-overlays
     (mapc 'delete-overlay helm--match-item-overlays)))
+
+(defun helm-match-line-cleanup-maybe ()
+  (when (helm-empty-buffer-p)
+    (helm-match-line-cleanup)))
 
 (defun helm-match-line-update ()
   (when helm-match-line-overlay
@@ -648,8 +847,9 @@ If STRING is non--nil return instead a space separated string."
     (set-window-text-height (helm-window) helm-resize-on-pa-text-height)))
 
 (defun helm-match-line-cleanup-pulse ()
-  (run-with-idle-timer 0.3 nil #'helm-match-line-cleanup))
+  (run-with-timer 0.3 nil #'helm-match-line-cleanup))
 
+(add-hook 'helm-after-update-hook 'helm-match-line-cleanup-maybe)
 (add-hook 'helm-after-persistent-action-hook 'helm-persistent-autoresize-hook)
 (add-hook 'helm-cleanup-hook 'helm-match-line-cleanup)
 (add-hook 'helm-after-action-hook 'helm-match-line-cleanup-pulse)
@@ -664,11 +864,12 @@ If STRING is non--nil return instead a space separated string."
     (cancel-timer helm--show-help-echo-timer)
     (setq helm--show-help-echo-timer nil)))
 
-(defun helm-show-help-echo ()
+(defun helm-maybe-show-help-echo ()
   (when helm--show-help-echo-timer
     (cancel-timer helm--show-help-echo-timer)
     (setq helm--show-help-echo-timer nil))
   (when (and helm-alive-p
+             helm-popup-tip-mode
              (member (assoc-default 'name (helm-get-current-source))
                      helm-sources-using-help-echo-popup))
     (setq helm--show-help-echo-timer
@@ -678,7 +879,8 @@ If STRING is non--nil return instead a space separated string."
              (save-selected-window
                (with-helm-window
                  (helm-aif (get-text-property (point-at-bol) 'help-echo)
-                     (popup-tip (concat " " (abbreviate-file-name it))
+                     (popup-tip (concat " " (abbreviate-file-name
+                                             (replace-regexp-in-string "\n.*" "" it)))
                                 :around nil
                                 :point (save-excursion
                                          (end-of-visual-line) (point)))))))))))
@@ -690,12 +892,10 @@ If STRING is non--nil return instead a space separated string."
   (require 'popup)
   (if helm-popup-tip-mode
       (progn
-        (add-hook 'helm-after-update-hook 'helm-show-help-echo) ; Needed for async sources.
-        (add-hook 'helm-move-selection-after-hook 'helm-show-help-echo)
+        (add-hook 'helm-move-selection-after-hook 'helm-maybe-show-help-echo)
         (add-hook 'helm-cleanup-hook 'helm-cancel-help-echo-timer))
-      (remove-hook 'helm-after-update-hook 'helm-show-help-echo)
-      (remove-hook 'helm-move-selection-after-hook 'helm-show-help-echo)
-      (remove-hook 'helm-cleanup-hook 'helm-cancel-help-echo-timer)))
+    (remove-hook 'helm-move-selection-after-hook 'helm-maybe-show-help-echo)
+    (remove-hook 'helm-cleanup-hook 'helm-cancel-help-echo-timer)))
 
 (defun helm-open-file-with-default-tool (file)
   "Open FILE with the default tool on this platform."
@@ -741,8 +941,11 @@ directory, open this directory."
       (find-file remote-path))))
 
 (defun helm-find-many-files (_ignore)
+  "Simple action that run `find-file' on marked candidates.
+Run `helm-find-many-files-after-hook' at end"
   (let ((helm--reading-passwd-or-string t))
-    (mapc 'find-file (helm-marked-candidates))))
+    (mapc 'find-file (helm-marked-candidates))
+    (helm-log-run-hook 'helm-find-many-files-after-hook)))
 
 (defun helm-read-repeat-string (prompt &optional count)
   "Prompt as many time PROMPT is not empty.
@@ -766,8 +969,9 @@ If COUNT is non--nil add a number after each prompt."
         (when (re-search-forward url-regexp nil t)
           (setq url (match-string 0)))
         (when (re-search-forward bmk-regexp nil t)
-          (setq title (funcall helm-html-decode-entities-function
-                               (match-string 1))))
+          (setq title (url-unhex-string
+                       (funcall helm-html-decode-entities-function
+                               (match-string 1)))))
         (push (cons title url) bookmarks-alist)
         (forward-line)))
     (nreverse bookmarks-alist)))
@@ -795,7 +999,7 @@ When unable to decode ENTITY returns nil."
 (provide 'helm-utils)
 
 ;; Local Variables:
-;; byte-compile-warnings: (not cl-functions obsolete)
+;; byte-compile-warnings: (not obsolete)
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:

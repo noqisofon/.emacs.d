@@ -1,6 +1,6 @@
 ;;; helm-elisp-package.el --- helm interface for package.el -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2018 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -34,6 +34,11 @@
           (const :tag "Show not installed packages" uninstalled)
           (const :tag "Show upgradable packages" upgrade)))
 
+(defcustom helm-el-truncate-lines t
+  "Truncate lines in helm-buffer when non--nil."
+  :group 'helm-el-package
+  :type 'boolean)
+
 ;; internals vars
 (defvar helm-el-package--show-only 'all)
 (defvar helm-el-package--initialized-p nil)
@@ -46,38 +51,45 @@
 (declare-function async-byte-recompile-directory "ext:async-bytecomp.el")
 
 (defun helm-el-package--init ()
-  (let (package-menu-async)
+  (let (package-menu-async
+        (inhibit-read-only t))
     (when (null package-alist)
       (setq helm-el-package--show-only 'all))
-    (when (fboundp 'package--removable-packages)
-      (setq helm-el-package--removable-packages
-            (package--removable-packages)))
-    (save-selected-window
-      (if (and helm-el-package--initialized-p
-               (fboundp 'package-show-package-list))
-          ;; Use this as `list-packages' doesn't work
-          ;; properly (empty buffer) when called from lisp
-          ;; with 'no-fetch (emacs-25 WA).
-          (package-show-package-list)
-        (when helm--force-updating-p (message "Refreshing packages list..."))  
-        (list-packages helm-el-package--initialized-p))
-      (setq helm-el-package--initialized-p t)
-      (message nil))
-    (helm-init-candidates-in-buffer
-        'global
-      (with-current-buffer (get-buffer "*Packages*")
-        (setq helm-el-package--tabulated-list tabulated-list-entries)
-        (buffer-string)))
-    (setq helm-el-package--upgrades (helm-el-package-menu--find-upgrades))
-    (if helm--force-updating-p
-        (if helm-el-package--upgrades
-            (message "Refreshing packages list done, [%d] package(s) to upgrade"
-                     (length helm-el-package--upgrades))
-          (message "Refreshing packages list done, no upgrades available"))
-      (setq helm-el-package--show-only (if helm-el-package--upgrades
-                                           'upgrade
-                                         helm-el-package-initial-filter)))
-    (kill-buffer "*Packages*")))
+    (when (and (fboundp 'package--removable-packages)
+               (setq helm-el-package--removable-packages
+                     (package--removable-packages))
+               (fboundp 'package-autoremove))
+      (package-autoremove))
+    (unwind-protect
+         (progn
+           (save-selected-window
+             (if (and helm-el-package--initialized-p
+                      (fboundp 'package-show-package-list))
+                 ;; Use this as `list-packages' doesn't work
+                 ;; properly (empty buffer) when called from lisp
+                 ;; with 'no-fetch (emacs-25 WA).
+                 (package-show-package-list)
+               (when helm--force-updating-p (message "Refreshing packages list..."))  
+               (list-packages helm-el-package--initialized-p))
+             (setq helm-el-package--initialized-p t)
+             (message nil))
+           (helm-init-candidates-in-buffer
+               'global
+             (with-current-buffer (get-buffer "*Packages*")
+               (setq helm-el-package--tabulated-list tabulated-list-entries)
+               (remove-text-properties (point-min) (point-max)
+                                       '(read-only button follow-link category))
+               (buffer-string)))
+           (setq helm-el-package--upgrades (helm-el-package-menu--find-upgrades))
+           (if helm--force-updating-p
+               (if helm-el-package--upgrades
+                   (message "Refreshing packages list done, [%d] package(s) to upgrade"
+                            (length helm-el-package--upgrades))
+                 (message "Refreshing packages list done, no upgrades available"))
+             (setq helm-el-package--show-only (if helm-el-package--upgrades
+                                                  'upgrade
+                                                helm-el-package-initial-filter))))
+      (kill-buffer "*Packages*"))))
 
 (defun helm-el-package-describe (candidate)
   (let ((id (get-text-property 0 'tabulated-list-id candidate)))
@@ -147,7 +159,10 @@
                 (package-delete (symbol-name (car id))
                                 (package-version-join (cdr id)))))
           (error (message (cadr err))))
-        unless (assoc (elt id 1) package-alist)
+        ;; Seems like package-descs are symbols with props instead of
+        ;; vectors in emacs-27, use package-desc-name to ensure
+        ;; compatibility in all emacs versions.
+        unless (assoc (package-desc-name id) package-alist)
         collect (if (fboundp 'package-desc-full-name)
                         id
                       (cons (symbol-name (car id))
@@ -349,7 +364,8 @@
    (update :initform 'helm-el-package--update)
    (candidate-number-limit :initform 9999)
    (action :initform '(("Describe package" . helm-el-package-describe)
-                       ("Visit homepage" . helm-el-package-visit-homepage)))))
+                       ("Visit homepage" . helm-el-package-visit-homepage)))
+   (group :initform 'helm-el-package)))
 
 (defun helm-el-package--action-transformer (actions candidate)
   (let* ((pkg-desc (get-text-property 0 'tabulated-list-id candidate))
@@ -364,9 +380,16 @@
                    actions)))
     (cond (built-in '(("Describe package" . helm-el-package-describe)))
           ((and (package-installed-p pkg-name)
-                (cdr (assq pkg-name helm-el-package--upgrades)))
+                (cdr (assq pkg-name helm-el-package--upgrades))
+                (member status '("installed" "dependency")))
            (append '(("Upgrade package(s)" . helm-el-package-upgrade)
-                     ("Uninstall package(s)" . helm-el-package-uninstall)) acts))
+                     ("Uninstall package(s)" . helm-el-package-uninstall))
+                   acts))
+          ((and (package-installed-p pkg-name)
+                (cdr (assq pkg-name helm-el-package--upgrades))
+                (string= status "available"))
+           (append '(("Upgrade package(s)" . helm-el-package-upgrade))
+                   acts))
           ((and (package-installed-p pkg-name)
                 (or (null (package-built-in-p pkg-name))
                     (and (package-built-in-p pkg-name)
@@ -425,14 +448,18 @@
     (setq helm-source-list-el-package
           (helm-make-source "list packages" 'helm-list-el-package-source)))
   (helm :sources 'helm-source-list-el-package
+        :truncate-lines helm-el-truncate-lines
+        :full-frame t
         :buffer "*helm list packages*"))
 
 ;;;###autoload
-(defun helm-list-elisp-packages-no-fetch ()
+(defun helm-list-elisp-packages-no-fetch (arg)
   "Preconfigured helm for emacs packages.
-Same as `helm-list-elisp-packages' but don't fetch packages on remote."
-  (interactive)
-  (let ((helm-el-package--initialized-p t))
+
+Same as `helm-list-elisp-packages' but don't fetch packages on remote.
+Called with a prefix ARG always fetch packages on remote."
+  (interactive "P")
+  (let ((helm-el-package--initialized-p (null arg)))
     (helm-list-elisp-packages nil)))
 
 (provide 'helm-elisp-package)

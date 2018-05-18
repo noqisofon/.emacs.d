@@ -1,6 +1,6 @@
 ;;; helm-tags.el --- Helm for Etags. -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012 ~ 2016 Thierry Volpiatto <thierry.volpiatto@gmail.com>
+;; Copyright (C) 2012 ~ 2018 Thierry Volpiatto <thierry.volpiatto@gmail.com>
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -96,7 +96,6 @@ one match."
     (set-keymap-parent map helm-map)
     (define-key map (kbd "M-<down>") 'helm-goto-next-file)
     (define-key map (kbd "M-<up>")   'helm-goto-precedent-file)
-    (define-key map (kbd "C-w")      'helm-yank-text-at-point)
     (define-key map (kbd "C-c o")    'helm-etags-run-switch-other-window)
     (define-key map (kbd "C-c C-o")  'helm-etags-run-switch-other-frame)
     map)
@@ -235,6 +234,7 @@ If no entry in cache, create one."
                                               (helm-etags-action-goto
                                                'find-file-other-frame
                                                c))))
+    :group 'helm-tags
     :persistent-help "Go to line"
     :persistent-action (lambda (candidate)
                          (helm-etags-action-goto 'find-file candidate)
@@ -251,16 +251,25 @@ If no entry in cache, create one."
 
 (defvar find-tag-marker-ring)
 
+(defsubst helm-etags--file-from-tag (fname)
+  (cl-loop for ext in
+           (cons "" (remove "" tags-compression-info-list))
+           for file = (concat fname ext)
+           when (file-exists-p file)
+           return file))
+
 (defun helm-etags-action-goto (switcher candidate)
   "Helm default action to jump to an etags entry in other window."
   (require 'etags)
+  (deactivate-mark t)
   (helm-log-run-hook 'helm-goto-line-before-hook)
   (let* ((split (helm-grep-split-line candidate))
          (fname (cl-loop for tagf being the hash-keys of helm-etags-cache
-                      for f = (expand-file-name
-                               (car split) (file-name-directory tagf))
-                      when (file-exists-p f)
-                      return f))
+                         for f = (expand-file-name
+                                  (car split) (file-name-directory tagf))
+                         ;; Try to find an existing file, possibly compressed.
+                         when (helm-etags--file-from-tag f)
+                         return it))
          (elm   (cl-caddr split))
          (linum (string-to-number (cadr split))))
     (if (null fname)
@@ -302,13 +311,7 @@ This function aggregates three sources of tag files:
         (str (if (region-active-p)
                  (buffer-substring-no-properties
                   (region-beginning) (region-end))
-                 ;; Use a raw syntax-table to determine tap.
-                 ;; This may be wrong when calling etags
-                 ;; with hff from a buffer that use
-                 ;; a different syntax, but most of the time it
-                 ;; should be better.
-                 (with-syntax-table (standard-syntax-table)
-                   (thing-at-point 'symbol)))))
+               (thing-at-point 'symbol))))
     (if (cl-notany 'file-exists-p tag-files)
         (message "Error: No tag file found.\
 Create with etags shell command, or visit with `find-tag' or `visit-tags-table'.")
@@ -334,7 +337,7 @@ Create with etags shell command, or visit with `find-tag' or `visit-tags-table'.
 (provide 'helm-tags)
 
 ;; Local Variables:
-;; byte-compile-warnings: (not cl-functions obsolete)
+;; byte-compile-warnings: (not obsolete)
 ;; coding: utf-8
 ;; indent-tabs-mode: nil
 ;; End:

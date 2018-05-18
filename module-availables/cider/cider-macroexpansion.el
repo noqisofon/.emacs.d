@@ -1,7 +1,7 @@
 ;;; cider-macroexpansion.el --- Macro expansion support -*- lexical-binding: t -*-
 
 ;; Copyright © 2012-2013 Tim King, Phil Hagelberg, Bozhidar Batsov
-;; Copyright © 2013-2016 Bozhidar Batsov, Artur Malabarba and CIDER contributors
+;; Copyright © 2013-2018 Bozhidar Batsov, Artur Malabarba and CIDER contributors
 ;;
 ;; Author: Tim King <kingtim@gmail.com>
 ;;         Phil Hagelberg <technomancy@gmail.com>
@@ -32,11 +32,11 @@
 ;;; Code:
 
 (require 'cider-mode)
+(require 'subr-x)
 (require 'cider-compat)
 
 (defconst cider-macroexpansion-buffer "*cider-macroexpansion*")
-
-(push cider-macroexpansion-buffer cider-ancillary-buffers)
+(add-to-list 'cider-ancillary-buffers cider-macroexpansion-buffer)
 
 (defcustom cider-macroexpansion-display-namespaces 'tidy
   "Determines if namespaces are displayed in the macroexpansion buffer.
@@ -65,15 +65,14 @@ Possible values are:
 The default for DISPLAY-NAMESPACES is taken from
 `cider-macroexpansion-display-namespaces'."
   (cider-ensure-op-supported "macroexpand")
-  (thread-first (list "op" "macroexpand"
-                      "expander" expander
-                      "code" expr
-                      "ns" (cider-current-ns)
-                      "display-namespaces"
-                      (or display-namespaces
-                          (symbol-name cider-macroexpansion-display-namespaces)))
-    (append (when cider-macroexpansion-print-metadata
-              (list "print-meta" "true")))
+  (thread-first `("op" "macroexpand"
+                  "expander" ,expander
+                  "code" ,expr
+                  "ns" ,(cider-current-ns)
+                  "display-namespaces" ,(or display-namespaces
+                                            (symbol-name cider-macroexpansion-display-namespaces)))
+    (nconc (when cider-macroexpansion-print-metadata
+             '("print-meta" "true")))
     (cider-nrepl-send-sync-request)
     (nrepl-dict-get "expansion")))
 
@@ -90,7 +89,7 @@ This variable specifies both what was expanded and the expander.")
 
 (defun cider-macroexpand-expr (expander expr)
   "Macroexpand, use EXPANDER, the given EXPR."
-  (when-let ((expansion (cider-sync-request:macroexpand expander expr)))
+  (when-let* ((expansion (cider-sync-request:macroexpand expander expr)))
     (setq cider-last-macroexpand-expression expr)
     (cider-initialize-macroexpansion-buffer expansion (cider-current-ns))))
 
@@ -126,12 +125,12 @@ If invoked with a PREFIX argument, use \\=`macroexpand\\=` instead of
 
 ;;;###autoload
 (defun cider-macroexpand-all ()
-  "Invoke \\=`clojure.walk/macroexpand-all\\=` on the expression preceding point."
+  "Invoke \\=`macroexpand-all\\=` on the expression preceding point."
   (interactive)
   (cider-macroexpand-expr "macroexpand-all" (cider-last-sexp)))
 
 (defun cider-macroexpand-all-inplace ()
-  "Perform inplace \\=`clojure.walk/macroexpand-all\\=` on the expression preceding point."
+  "Perform inplace \\=`macroexpand-all\\=` on the expression preceding point."
   (interactive)
   (cider-macroexpand-expr-inplace "macroexpand-all"))
 
