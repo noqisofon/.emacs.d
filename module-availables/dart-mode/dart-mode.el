@@ -88,7 +88,8 @@
 (require 'cl-lib)
 (require 'compile)
 (require 'dash)
-(require 'flycheck)
+(ignore-errors
+ (require 'flycheck))
 (require 'json)
 (require 's)
 
@@ -455,9 +456,6 @@ Returns nil if `dart-sdk-path' is nil."
 
 ;;; CC indentation support
 
-(defvar c-syntactic-context nil
-  "A dynamically-bound variable used by cc-mode.")
-
 (defun dart-block-offset (info)
   "Calculate the correct indentation for inline functions.
 
@@ -787,7 +785,8 @@ directory or the current file directory to the analysis roots."
   (add-hook 'first-change-hook 'dart-add-analysis-overlay t t)
   (add-hook 'after-change-functions 'dart-change-analysis-overlay t t)
   (add-hook 'after-save-hook 'dart-remove-analysis-overlay t t)
-  (add-to-list 'flycheck-checkers 'dart-analysis-server))
+  (when (featurep 'flycheck)
+   (add-to-list 'flycheck-checkers 'dart-analysis-server)))
 
 (defun dart-start-analysis-server ()
   "Start the Dart analysis server.
@@ -833,13 +832,16 @@ Initializes analysis server support for all `dart-mode' buffers."
 The Dart analysis server allows clients to 'overlay' file contents with
 a client-supplied string.  This is needed because we want Emacs to report
 errors for the current contents of the buffer, not whatever is saved to disk."
-  (dart--analysis-server-send
-   "analysis.updateContent"
-   `((files .
-            ((,buffer-file-name . ((type . "add")
-                                   (content . ,(save-restriction
-                                                 (widen)
-                                                 (buffer-string))))))))))
+  ;; buffer-file-name can be nil within revert-buffer, but in that case the
+  ;; buffer is just being reverted to its format on disk anyway.
+  (when buffer-file-name
+    (dart--analysis-server-send
+     "analysis.updateContent"
+     `((files .
+              ((,buffer-file-name . ((type . "add")
+                                     (content . ,(save-restriction
+                                                   (widen)
+                                                   (buffer-string)))))))))))
 
 (defun dart-change-analysis-overlay
     (change-begin change-end change-before-length)
@@ -1027,10 +1029,12 @@ SUBSCRIPTION is an opaque object provided by
      (lambda (response)
        (dart--report-errors response buffer callback)))))
 
-(flycheck-define-generic-checker 'dart-analysis-server
+(when (featurep 'flycheck)
+ (flycheck-define-generic-checker
+  'dart-analysis-server
   "Checks Dart source code for errors using Dart analysis server."
   :start 'dart--flycheck-start
-  :modes '(dart-mode))
+  :modes '(dart-mode)))
 
 (defun dart--report-errors (response buffer callback)
   "Report the errors returned from the analysis server.

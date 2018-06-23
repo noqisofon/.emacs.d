@@ -40,4 +40,6 @@
     ;; 新規作成するバッファのエンコードです。
     (when (fboundp 'prefer-coding-system-coding)
       (prefer-coding-system-coding default-coding))))
+
+(provide '000-locale)
 ;;; 000-locale.el ends here

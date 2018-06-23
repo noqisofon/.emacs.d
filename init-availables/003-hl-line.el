@@ -19,3 +19,5 @@
   ;;        ()))
   ;;     "*Face used by hl-line.")
     (setq hl-line-face 'highlight))
+
+(provide '003-hl-line)

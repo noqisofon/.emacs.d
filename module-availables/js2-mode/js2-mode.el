@@ -10586,7 +10586,9 @@ array-literals, array comprehensions and regular expressions."
     (setq node (if js2-compiler-xml-available
                    (js2-parse-property-name nil name 0)
                  (js2-create-name-node 'check-activation nil name)))
-    (if js2-highlight-external-variables
+    (if (and js2-highlight-external-variables
+             ;; FIXME: What's TRT for `js2-xml-ref-node'?
+             (js2-name-node-p node))
         (js2-record-name-node node))
     node))
 
@@ -12577,8 +12579,11 @@ destroying the region selection."
         (goto-char (cl-cadadr e))))))
 
 (defun js2-mode-create-imenu-index ()
-  "Return an alist for `imenu--index-alist'."
-  ;; This is built up in `js2-parse-record-imenu' during parsing.
+  "Returns an alist for `imenu--index-alist'. Returns nil on first
+scan if buffer size > `imenu-auto-rescan-maxout'."
+  (when (and (not js2-mode-ast)
+             (<= (buffer-size) imenu-auto-rescan-maxout))
+      (js2-reparse))
   (when js2-mode-ast
     ;; if we have an ast but no recorder, they're requesting a rescan
     (unless js2-imenu-recorder

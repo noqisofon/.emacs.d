@@ -46,3 +46,5 @@
 (defvar usg-unix-v-p (system-type-p 'usg-unix-v))
 (defvar windows-nt-p (system-type-p 'windows-nt))
 (defvar ms-dos-p     (system-type-p 'ms-dos))
+
+(provide '000-platform)

@@ -1,5 +1,7 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
+(require-if-exists 003-hl-line)
+
 ;; 色の設定を有効にします。
 (global-font-lock-mode t)
 
@@ -19,5 +21,4 @@
                   (cursor-type . ,frame-cursor-type))
                 default-frame-alist)))
 
-
-(load "003-hl-line")
+(provide '000-display)

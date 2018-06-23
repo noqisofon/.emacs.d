@@ -1,7 +1,7 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
-(load "000-platform")
-(load "000-locale")
+(require-if-exists 000-platform)
+(require-if-exists 000-locale)
 
 (load "xyzzy-like-title")
 (load "e-arrows-macro")
@@ -50,3 +50,5 @@
 (load "000-elscreen")
 (load "000-auto-complete")
 (load "000-slime")
+
+(provide '000-environment)

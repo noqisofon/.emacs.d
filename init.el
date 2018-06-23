@@ -47,6 +47,6 @@
 
 (load "profile")
 
-(load "000-environment")
-(load "000-init")
+(require-if-exists 000-environment)
+(require-if-exists 000-init)
 

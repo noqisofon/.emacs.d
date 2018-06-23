@@ -43,4 +43,5 @@
 
 (load "040-programing-language")
 
+(provide '000-init)
 ;;; 000-init.el ends here
