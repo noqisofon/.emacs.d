@@ -28,6 +28,5 @@
 (require-if-exists chicken)
 (require-if-exists cluck)
 
-
 (provide '043-chicken)
 ;;; 043-chicken.el ends here

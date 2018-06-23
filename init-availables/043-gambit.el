@@ -33,6 +33,5 @@
 
 (require-if-exists gambit)
 
-
 (provide '043-gambit)
 ;;; 043-gambit.el ends here

@@ -42,26 +42,27 @@
 (require-if-exists geiser
                    (setq geiser-default-implementation 'guile))
 
-(add-hook 'scheme-mode-hook (lambda ()
-                              (setq lisp-body-indent 2)
-                              (when (featurep 'scheme-complete)
-                                (make-local-variable 'eldoc-documentation-function)
-                                (setq lisp-indent-function         'scheme-smart-indent-function)
-                                ;;(setq lisp-indent-function         'common-lisp-indent-function)
-                                (setq eldoc-documentation-function 'scheme-get-current-symbol-info)
-                                (eldoc-mode))))
+(add-hook 'scheme-mode-hook
+          (lambda ()
+            (setq lisp-body-indent 2)
+            (when (featurep 'scheme-complete)
+              (make-local-variable 'eldoc-documentation-function)
+              (setq lisp-indent-function         'scheme-smart-indent-function)
+              ;;(setq lisp-indent-function         'common-lisp-indent-function)
+              (setq eldoc-documentation-function 'scheme-get-current-symbol-info)
+              (eldoc-mode))))
 
 (cond ((string= scheme-program-name "csi")
-       (load "043-chicken"))
+       (require-if-exists 043-chicken))
 
       ((string= scheme-program-name "gosh")
-       (load "043-gauche"))
+       (require-if-exists 043-gauche))
 
       ((string= scheme-program-name "guile")
-       (load "043-guile"))
+       (require-if-exists 043-guile))
 
       ((string= scheme-program-name "gsi")
-       (load "043-gambit")))
+       (require-if-exists 043-gambit)))
 
 (provide '042-scheme)
 ;;; 042-scheme.el ends here

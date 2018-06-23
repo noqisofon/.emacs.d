@@ -26,11 +26,11 @@
 
 ;;; Code:
 (lazyload (ruby-mode) "ruby-mode")
+
 ;; ruby モード。
 (push '("\\.rb$" . ruby-mode) auto-mode-alist)
 ;; インタプリタモードの設定。
-(push '("ruby" . ruby-mode) interpreter-mode-alist)
-
+(push '("ruby"   . ruby-mode) interpreter-mode-alist)
 
 (provide '040-ruby)
 ;;; 040-ruby.el ends here

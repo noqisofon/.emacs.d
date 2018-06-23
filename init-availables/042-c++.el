@@ -29,6 +29,5 @@
                  ;; 標準オフセットを tab-width と同じにします。
                  (setq c++-basic-offset tab-width))
 
-
 (provide '042-c++)
 ;;; 042-c++.el ends here

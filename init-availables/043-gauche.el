@@ -29,6 +29,5 @@
 (setq process-coding-system-alist
       (cons '("gosh" utf-8 . utf-8) process-coding-system-alist))
 
-
 (provide '043-gauche)
 ;;; 043-gauche.el ends here

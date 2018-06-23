@@ -29,6 +29,5 @@
 
 (push '("\\.vala$" . vala-mode) auto-mode-alist)
 
-
 (provide '040-vala)
 ;;; 040-vala.el ends here
