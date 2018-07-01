@@ -3,9 +3,9 @@
 (require-if-exists 000-platform)
 (require-if-exists 000-locale)
 
-(load "xyzzy-like-title")
-(load "e-arrows-macro")
-(load "bookshelf")
+(require-if-exists xyzzy-like-title)
+(require-if-exists e-arrows-macro)
+(require-if-exists bookshelf)
 
 ;; カレントディレクトリの位置を $HOME に設定します。
 (cd "~/")
