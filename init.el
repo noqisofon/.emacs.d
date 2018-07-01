@@ -45,8 +45,8 @@
 
 (add-to-load-path "init-availables" "module-availables" "private")
 
-(load "profile")
+(require 'profile)
 
-(require-if-exists 000-environment)
-(require-if-exists 000-init)
+(require '000-environment)
+(require '000-init)
 
