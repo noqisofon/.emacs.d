@@ -1,11 +1,11 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
-(require-if-exists 000-platform)
-(require-if-exists 000-locale)
+(require '000-platform)
+(require '000-locale)
 
-(require-if-exists xyzzy-like-title)
-(require-if-exists e-arrows-macro)
-(require-if-exists bookshelf)
+(require 'xyzzy-like-title)
+(require 'e-arrows-macro)
+(require 'bookshelf)
 
 ;; カレントディレクトリの位置を $HOME に設定します。
 (cd "~/")
