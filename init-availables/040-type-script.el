@@ -1,6 +1,6 @@
 ;;; 040-type-script.el ---                           -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2015  ned rihine
+;; Copyright (C) 2015-2018  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -24,13 +24,21 @@
 
 ;;; Code:
 (require-if-exists typescript)
+(require-if-exists tss)
 
 (push '("\\.ts$" . typescript-mode) auto-mode-alist)
 
-(require-if-exists tss)
+;; (defun typescript-setup ()
+;;   (setq typescript-indent-level 4)
+;;   (flycheck-mode t)
+;;   ;; (flycheck-typescript-tslint-setup)
+;;   (tss-setup-current-buffer))
 
 (when (fboundp 'tss-config-default)
   (tss-config-default))
+
+;; (add-hook 'typescript-mode-hook 'typescript-setup)
+;; (add-hook 'kill-buffer-hook     'tss--delete-process t)
 
 (provide '040-type-script)
 ;;; 040-type-script.el ends here

@@ -12,7 +12,7 @@
 ;; Maintainer: Bozhidar Batsov <bozhidar@batsov.com>
 ;; URL: http://www.github.com/clojure-emacs/cider
 ;; Version: 0.18.0-snapshot
-;; Package-Requires: ((emacs "25") (clojure-mode "5.7.0") (pkg-info "0.4") (queue "0.1.1") (spinner "1.7") (seq "2.16"))
+;; Package-Requires: ((emacs "25") (clojure-mode "5.7.0") (pkg-info "0.4") (queue "0.1.1") (spinner "1.7") (seq "2.16") (sesman "0.1.1"))
 ;; Keywords: languages, clojure, cider
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -138,7 +138,9 @@ version from the CIDER package or library.")
 
 (defcustom cider-clojure-cli-command
   "clojure"
-  "The command used to execute clojure with tools.deps (requires Clojure 1.9+)."
+  "The command used to execute clojure with tools.deps (requires Clojure 1.9+).
+Don't use clj here, as it doesn't work when spawned from Emacs due to
+it using rlwrap."
   :type 'string
   :group 'cider
   :safe #'stringp
@@ -276,12 +278,6 @@ This variable is used by `cider-connect'."
   :group 'cider
   :package-version '(cider . "0.9.0"))
 
-(defcustom cider-auto-mode t
-  "When non-nil, automatically enable cider mode for all Clojure buffers."
-  :type 'boolean
-  :safe #'booleanp
-  :package-version '(cider . "0.9.0"))
-
 (defcustom cider-inject-dependencies-at-jack-in t
   "When nil, do not inject repl dependencies (most likely nREPL middlewares) at `cider-jack-in' time."
   :type 'boolean
@@ -333,7 +329,9 @@ Throws an error if PROJECT-TYPE is unknown.  Known types are
     ("clojure-cli" (cider--resolve-command cider-clojure-cli-command))
     ;; here we have to account for the possibility that the command is either
     ;; "npx shadow-cljs" or just "shadow-cljs"
-    ("shadow-cljs" (cider--resolve-command (car (split-string cider-shadow-cljs-command))))
+    ("shadow-cljs" (let ((parts (split-string cider-shadow-cljs-command)))
+                     (when-let* ((command (cider--resolve-command (car parts))))
+                       (mapconcat #'identity (cons command (cdr parts)) " "))))
     ("gradle" (cider--resolve-command cider-gradle-command))
     (_ (user-error "Unsupported project type `%s'" project-type))))
 
@@ -384,6 +382,15 @@ Elements of the list are artifact name and list of exclusions to apply for the a
 (put 'cider-jack-in-dependencies-exclusions 'risky-local-variable t)
 (cider-add-to-alist 'cider-jack-in-dependencies-exclusions
                     "org.clojure/tools.nrepl" '("org.clojure/clojure"))
+
+(defconst cider-clojure-artifact-id "org.clojure/clojure"
+  "Artifact identifier for Clojure.")
+
+(defconst cider-minimum-clojure-version "1.8.0"
+  "Minimum supported version of Clojure.")
+
+(defconst cider-latest-clojure-version "1.10.0"
+  "Latest supported version of Clojure.")
 
 (defcustom cider-jack-in-auto-inject-clojure nil
   "Version of clojure to auto-inject into REPL.
@@ -755,7 +762,7 @@ It's intended to be used in your Emacs config."
 
 (defcustom cider-default-cljs-repl nil
   "The default ClojureScript REPL to start.
-This affects commands like `cider-jack-in-clojurescript'.  Generally it's
+This affects commands like `cider-jack-in-cljs'.  Generally it's
 intended to be set via .dir-locals.el for individual projects, as its
 relatively unlikely you'd like to use the same type of REPL in each project
 you're working on."
@@ -775,7 +782,7 @@ you're working on."
 (make-obsolete-variable 'cider-cljs-gradle-repl 'cider-default-cljs-repl "0.17")
 
 (defun cider-select-cljs-repl ()
-  "Select the ClojureScript REPL to use with `cider-jack-in-clojurescript'."
+  "Select the ClojureScript REPL to use with `cider-jack-in-cljs'."
   (let ((repl-types (mapcar #'car cider-cljs-repl-types)))
     (intern (completing-read "Select ClojureScript REPL type: " repl-types))))
 
@@ -882,6 +889,39 @@ nil."
 
 
 ;;; User Level Connectors
+
+(defvar cider-start-map
+  (let ((map (define-prefix-command 'cider-start-map)))
+
+    (define-key map (kbd "j j") #'cider-jack-in-clj)
+    (define-key map (kbd "j s") #'cider-jack-in-cljs)
+    (define-key map (kbd "j m") #'cider-jack-in-clj&cljs)
+    (define-key map (kbd "C-j j") #'cider-jack-in-clj)
+    (define-key map (kbd "C-j s") #'cider-jack-in-cljs)
+    (define-key map (kbd "C-j m") #'cider-jack-in-clj&cljs)
+    (define-key map (kbd "C-j C-j") #'cider-jack-in-clj)
+    (define-key map (kbd "C-j C-s") #'cider-jack-in-cljs)
+    (define-key map (kbd "C-j C-m") #'cider-jack-in-clj&cljs)
+
+    (define-key map (kbd "c j") #'cider-connect-clj)
+    (define-key map (kbd "c s") #'cider-connect-cljs)
+    (define-key map (kbd "c m") #'cider-connect-clj&cljs)
+    (define-key map (kbd "C-c j") #'cider-connect-clj)
+    (define-key map (kbd "C-c s") #'cider-connect-cljs)
+    (define-key map (kbd "C-c m") #'cider-connect-clj&cljs)
+    (define-key map (kbd "C-c C-j") #'cider-connect-clj)
+    (define-key map (kbd "C-c C-s") #'cider-connect-cljs)
+    (define-key map (kbd "C-c C-m") #'cider-connect-clj&cljs)
+
+    (define-key map (kbd "s j") #'cider-connect-sibling-clj)
+    (define-key map (kbd "s s") #'cider-connect-sibling-cljs)
+    (define-key map (kbd "C-s j") #'cider-connect-sibling-clj)
+    (define-key map (kbd "C-s s") #'cider-connect-sibling-cljs)
+    (define-key map (kbd "C-s C-j") #'cider-connect-sibling-clj)
+    (define-key map (kbd "C-s C-s") #'cider-connect-sibling-cljs)
+
+    map)
+  "CIDER jack-in and connect keymap.")
 
 ;;;###autoload
 (defun cider-jack-in-clj (&optional do-prompt)
@@ -1174,8 +1214,9 @@ choose."
 
 ;; TODO: Implement a check for command presence over tramp
 (defun cider--resolve-command (command)
-  "Find COMMAND on `exec-path' if possible, or return nil.
-In case `default-directory' is non-local we assume the command is available."
+  "Find COMMAND in exec path (see variable `exec-path').
+Return nil if not found.  In case `default-directory' is non-local we
+assume the command is available."
   (when-let* ((command (or (and (file-remote-p default-directory) command)
                            (executable-find command)
                            (executable-find (concat command ".bat")))))
@@ -1189,11 +1230,11 @@ In case `default-directory' is non-local we assume the command is available."
      (define-key clojure-mode-map (kbd "C-c M-J") #'cider-jack-in-cljs)
      (define-key clojure-mode-map (kbd "C-c M-c") #'cider-connect-clj)
      (define-key clojure-mode-map (kbd "C-c M-C") #'cider-connect-cljs)
-     (define-key clojure-mode-map (kbd "C-c M-s") #'cider-connect-sibling-clj)
-     (define-key clojure-mode-map (kbd "C-c M-S") #'cider-connect-sibling-cljs)
+     (define-key clojure-mode-map (kbd "C-c C-x") 'cider-start-map)
      (define-key clojure-mode-map (kbd "C-c C-s") 'sesman-map)
      (require 'sesman)
-     (sesman-install-menu clojure-mode-map)))
+     (sesman-install-menu clojure-mode-map)
+     (add-hook 'clojure-mode-hook (lambda () (setq-local sesman-system 'CIDER)))))
 
 (provide 'cider)
 

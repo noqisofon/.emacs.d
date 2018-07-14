@@ -273,9 +273,10 @@ clobber *1/2/3)."
   "Return a list of all libs on the classpath."
   (let ((libs (seq-filter (lambda (cp-entry)
                             (string-suffix-p ".jar" cp-entry))
-                          (cider-sync-request:classpath))))
+                          (cider-sync-request:classpath)))
+        (dir-sep (if (string-equal system-type "windows-nt") "\\\\" "/")))
     (thread-last libs
-      (seq-map (lambda (s) (split-string s "/")))
+      (seq-map (lambda (s) (split-string s dir-sep)))
       (seq-map #'reverse)
       (seq-map (lambda (l) (reverse (seq-take l 4)))))))
 
@@ -291,7 +292,13 @@ The library is a string of the format \"group-id/artifact-id\"."
                   (and (equal group-id g) (equal artifact-id a))))
               (cider-classpath-libs))))
 
-(declare-function cider-interrupt-handler "cider-interaction")
+
+;;; Interrupt evaluation
+
+(defun cider-interrupt-handler (buffer)
+  "Create an interrupt response handler for BUFFER."
+  (nrepl-make-response-handler buffer nil nil nil nil))
+
 (defun cider-interrupt ()
   "Interrupt any pending evaluations."
   (interactive)
@@ -340,45 +347,10 @@ unless ALL is truthy."
   (when (and class member)
     (cider-sync-request:info nil class member)))
 
-(defun cider--find-var-other-window (var &optional line)
-  "Find the definition of VAR, optionally at a specific LINE.
-
-Display the results in a different window."
-  (if-let* ((info (cider-var-info var)))
-      (progn
-        (if line (setq info (nrepl-dict-put info "line" line)))
-        (cider--jump-to-loc-from-info info t))
-    (user-error "Symbol `%s' not resolved" var)))
-
-(defun cider--find-var (var &optional line)
-  "Find the definition of VAR, optionally at a specific LINE."
-  (if-let* ((info (cider-var-info var)))
-      (progn
-        (if line (setq info (nrepl-dict-put info "line" line)))
-        (cider--jump-to-loc-from-info info))
-    (user-error "Symbol `%s' not resolved" var)))
-
-(defun cider-find-var (&optional arg var line)
-  "Find definition for VAR at LINE.
-Prompt according to prefix ARG and `cider-prompt-for-symbol'.
-A single or double prefix argument inverts the meaning of
-`cider-prompt-for-symbol'.  A prefix of `-` or a double prefix argument causes
-the results to be displayed in a different window.  The default value is
-thing at point."
-  (interactive "P")
-  (cider-ensure-op-supported "info")
-  (if var
-      (cider--find-var var line)
-    (funcall (cider-prompt-for-symbol-function arg)
-             "Symbol"
-             (if (cider--open-other-window-p arg)
-                 #'cider--find-var-other-window
-               #'cider--find-var))))
-
 
 ;;; Requests
 
-(declare-function cider-load-file-handler "cider-interaction")
+(declare-function cider-load-file-handler "cider-eval")
 (defun cider-request:load-file (file-contents file-path file-name &optional connection callback)
   "Perform the nREPL \"load-file\" op.
 FILE-CONTENTS, FILE-PATH and FILE-NAME are details of the file to be
@@ -576,6 +548,29 @@ The result entries are relative to the classpath."
       ;; "clojure.lang.ExceptionInfo: Unmatched delimiter ]"
       (error (car (split-string err "\n"))))
     (nrepl-dict-get response "formatted-edn")))
+
+;;; Dealing with input
+;; TODO: Replace this with some nil handler.
+(defun cider-stdin-handler (&optional _buffer)
+  "Make a stdin response handler for _BUFFER."
+  (nrepl-make-response-handler (current-buffer)
+                               (lambda (_buffer _value))
+                               (lambda (_buffer _out))
+                               (lambda (_buffer _err))
+                               nil))
+
+(defun cider-need-input (buffer)
+  "Handle an need-input request from BUFFER."
+  (with-current-buffer buffer
+    (let ((map (make-sparse-keymap)))
+      (set-keymap-parent map minibuffer-local-map)
+      (define-key map (kbd "C-c C-c") 'abort-recursive-edit)
+      (let ((stdin (condition-case nil
+                       (concat (read-from-minibuffer "Stdin: " nil map) "\n")
+                     (quit nil))))
+        (nrepl-request:stdin stdin
+                             (cider-stdin-handler buffer)
+                             (cider-current-repl))))))
 
 (provide 'cider-client)
 

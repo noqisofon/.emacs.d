@@ -37,7 +37,6 @@
 (require 'pulse)
 
 (defconst cider-repl-history-buffer "*cider-repl-history*")
-(add-to-list 'cider-ancillary-buffers cider-repl-history-buffer)
 
 (defgroup cider-repl-history nil
   "A package for browsing and inserting the items in the CIDER command history."
@@ -693,6 +692,7 @@ text from the *cider-repl-history* buffer."
   "Major mode for browsing the entries in the command input history.
 
 \\{cider-repl-history-mode-map}"
+  (setq-local sesman-system 'CIDER)
   (define-key cider-repl-history-mode-map (kbd "n") 'cider-repl-history-forward)
   (define-key cider-repl-history-mode-map (kbd "p") 'cider-repl-history-previous)
   (define-key cider-repl-history-mode-map (kbd "SPC") 'cider-repl-history-insert-and-quit)

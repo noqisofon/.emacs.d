@@ -145,6 +145,7 @@ Clojure and ClojureScript when invoking REPL type changing forms.
 Use `cider-set-repl-type' to manually change the REPL type."
   :type 'boolean
   :group 'cider-repl
+  :safe #'booleanp
   :package-version '(cider . "0.18.0"))
 
 (defcustom cider-repl-use-clojure-font-lock t
@@ -1026,10 +1027,12 @@ text property `cider-old-input'."
   "Switch between the Clojure and ClojureScript REPLs for the current project."
   (interactive)
   ;; FIXME: implement cycling as session can hold more than two REPLs
-  (if-let* ((this-repl (cider-current-repl))
-            (other-repls (seq-remove (lambda (r) (eq r this-repl)) (cider-repls))))
-      (switch-to-buffer (car other-repls))
-    (message "There's no other REPL for the current project")))
+  (let* ((this-repl (cider-current-repl nil 'ensure))
+         (other-repl (car (seq-remove (lambda (r) (eq r this-repl)) (cider-repls nil t)))))
+    (if other-repl
+        (switch-to-buffer other-repl)
+      (user-error "No other REPL in current session (%s)"
+                  (car (sesman-current-session 'CIDER))))))
 
 (defvar cider-repl-clear-buffer-hook)
 
@@ -1478,12 +1481,12 @@ constructs."
   (puthash name handler cider-repl-shortcuts))
 
 (declare-function cider-toggle-trace-ns "cider-tracing")
-(declare-function cider-undef "cider-interaction")
+(declare-function cider-undef "cider-mode")
 (declare-function cider-browse-ns "cider-browse-ns")
 (declare-function cider-classpath "cider-classpath")
 (declare-function cider-repl-history "cider-repl-history")
-(declare-function cider-run "cider-interaction")
-(declare-function cider-refresh "cider-interaction")
+(declare-function cider-run "cider-mode")
+(declare-function cider-ns-refresh "cider-ns")
 (declare-function cider-version "cider")
 (declare-function cider-test-run-loaded-tests "cider-test")
 (declare-function cider-test-run-project-tests "cider-test")
@@ -1498,7 +1501,7 @@ constructs."
 (cider-repl-add-shortcut "history" #'cider-repl-history)
 (cider-repl-add-shortcut "trace-ns" #'cider-toggle-trace-ns)
 (cider-repl-add-shortcut "undef" #'cider-undef)
-(cider-repl-add-shortcut "refresh" #'cider-refresh)
+(cider-repl-add-shortcut "refresh" #'cider-ns-refresh)
 (cider-repl-add-shortcut "help" #'cider-repl-shortcuts-help)
 (cider-repl-add-shortcut "test-ns" #'cider-test-run-ns-tests)
 (cider-repl-add-shortcut "test-all" #'cider-test-run-loaded-tests)
@@ -1560,17 +1563,21 @@ constructs."
 (defvar cider-repl-mode-syntax-table
   (copy-syntax-table clojure-mode-syntax-table))
 
-(declare-function cider-eval-last-sexp "cider-interaction")
-(declare-function cider-refresh "cider-interaction")
+(declare-function cider-eval-last-sexp "cider-eval")
 (declare-function cider-toggle-trace-ns "cider-tracing")
 (declare-function cider-toggle-trace-var "cider-tracing")
-(declare-function cider-find-resource "cider-interaction")
-(declare-function cider-find-ns "cider-interaction")
-(declare-function cider-find-keyword "cider-interaction")
+(declare-function cider-find-resource "cider-find")
+(declare-function cider-find-ns "cider-find")
+(declare-function cider-find-keyword "cider-find")
+(declare-function cider-find-var "cider-find")
 (declare-function cider-switch-to-last-clojure-buffer "cider-mode")
 (declare-function cider-macroexpand-1 "cider-macroexpansion")
 (declare-function cider-macroexpand-all "cider-macroexpansion")
 (declare-function cider-selector "cider-selector")
+(declare-function cider-jack-in-clj "cider")
+(declare-function cider-jack-in-cljs "cider")
+(declare-function cider-connect-clj "cider")
+(declare-function cider-connect-cljs "cider")
 
 (defvar cider-repl-mode-map
   (let ((map (make-sparse-keymap)))
@@ -1609,20 +1616,19 @@ constructs."
     (define-key map (kbd "C-c M-s") #'cider-selector)
     (define-key map (kbd "C-c M-d") #'cider-describe-current-connection)
     (define-key map (kbd "C-c C-q") #'cider-quit)
+    (define-key map (kbd "C-c M-r") #'cider-restart)
     (define-key map (kbd "C-c M-i") #'cider-inspect)
     (define-key map (kbd "C-c M-p") #'cider-repl-history)
     (define-key map (kbd "C-c M-t v") #'cider-toggle-trace-var)
     (define-key map (kbd "C-c M-t n") #'cider-toggle-trace-ns)
-    (define-key map (kbd "C-c C-x") #'cider-refresh)
+    (define-key map (kbd "C-c C-x") 'cider-start-map)
     (define-key map (kbd "C-x C-e") #'cider-eval-last-sexp)
     (define-key map (kbd "C-c C-r") 'clojure-refactor-map)
     (define-key map (kbd "C-c C-v") 'cider-eval-commands-map)
-    (define-key map (kbd "C-c M-j") #'cider-jack-in-clojure)
-    (define-key map (kbd "C-c M-J") #'cider-jack-in-clojurescript)
-    (define-key map (kbd "C-c M-c") #'cider-connect-clojure)
-    (define-key map (kbd "C-c M-C") #'cider-connect-clojurescript)
-    (define-key map (kbd "C-c M-s") #'cider-connect-sibling-clojure)
-    (define-key map (kbd "C-c M-S") #'cider-connect-sibling-clojurescript)
+    (define-key map (kbd "C-c M-j") #'cider-jack-in-clj)
+    (define-key map (kbd "C-c M-J") #'cider-jack-in-cljs)
+    (define-key map (kbd "C-c M-c") #'cider-connect-clj)
+    (define-key map (kbd "C-c M-C") #'cider-connect-cljs)
 
     (define-key map (string cider-repl-shortcut-dispatch-char) #'cider-repl-handle-shortcut)
     (easy-menu-define cider-repl-mode-menu map
@@ -1652,7 +1658,7 @@ constructs."
         ["Inspect" cider-inspect]
         ["Toggle var tracing" cider-toggle-trace-var]
         ["Toggle ns tracing" cider-toggle-trace-ns]
-        ["Refresh loaded code" cider-refresh]
+        ["Refresh loaded code" cider-ns-refresh]
         "--"
         ["Set REPL ns" cider-repl-set-ns]
         ["Toggle pretty printing" cider-repl-toggle-pretty-printing]
@@ -1702,7 +1708,7 @@ constructs."
         (let ((font-lock-dont-widen t))
           (apply func (max beg cider-repl-input-start-mark) end rest))))))
 
-(declare-function cider-complete-at-point "cider-interaction")
+(declare-function cider-complete-at-point "cider-completion")
 (defvar cider--static-font-lock-keywords)
 
 (define-derived-mode cider-repl-mode fundamental-mode "REPL"

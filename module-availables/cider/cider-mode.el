@@ -32,12 +32,13 @@
 ;;; Code:
 
 (require 'clojure-mode)
-(require 'cider-interaction)
-(require 'cider-profile)
-(require 'cider-test)
+(require 'cider-eval)
+(require 'cider-test) ; required only for the menu
 (require 'cider-eldoc)
 (require 'cider-resolve)
-(require 'cider-doc)
+(require 'cider-doc) ; required only for the menu
+(require 'cider-profile) ; required only for the menu
+(require 'cider-completion)
 (require 'subr-x)
 (require 'cider-compat)
 
@@ -98,30 +99,16 @@ that of the namespace in the Clojure source buffer."
     (goto-char (point-max))))
 
 (defun cider-switch-to-repl-buffer (&optional set-namespace)
-  "Select the REPL buffer, when possible in an existing window.
-The buffer chosen is based on the file open in the current buffer.  If
-multiple cider sessions are associated with current connection the most
-recent is used.  With a prefix arg SET-NAMESPACE sets the namespace in the
-REPL buffer to that of the namespace in the Clojure source buffer
-
-Hint: You can use `display-buffer-reuse-frames' and
-`special-display-buffer-names' to customize the frame in which
-the buffer should appear."
+  "Switch to current REPL buffer, when possible in an existing window.
+The type of the REPL is inferred from the mode of current buffer.  With a
+prefix arg SET-NAMESPACE sets the namespace in the REPL buffer to that of
+the namespace in the Clojure source buffer"
   (interactive "P")
-  (if-let* ((repls (cider-repls)))
-      (let* ((type (cider-repl-type-for-buffer))
-             (a-repl)
-             (the-repl (seq-find (lambda (buf)
-                                   (when (member buf repls)
-                                     (unless a-repl
-                                       (setq a-repl buf))
-                                     (equal type (cider-repl-type-for-buffer buf))))
-                                 (buffer-list))))
-        (let ((repl (or the-repl a-repl)))
-          (cider--switch-to-repl-buffer repl set-namespace)))
-    (user-error "No linked REPL")))
+  (cider--switch-to-repl-buffer
+   (cider-current-repl nil 'ensure)
+   set-namespace))
 
-(declare-function cider-load-buffer "cider-interaction")
+(declare-function cider-load-buffer "cider-eval")
 
 (defun cider-load-buffer-and-switch-to-repl-buffer (&optional set-namespace)
   "Load the current buffer into the matching REPL buffer and switch to it.
@@ -169,6 +156,51 @@ the related commands `cider-repl-clear-buffer' and
         (cider-repl-clear-buffer)
       (cider-repl-clear-output))
     (switch-to-buffer origin-buffer)))
+
+(defun cider-undef ()
+  "Undefine a symbol from the current ns."
+  (interactive)
+  (cider-ensure-op-supported "undef")
+  (cider-read-symbol-name
+   "Undefine symbol: "
+   (lambda (sym)
+     (cider-nrepl-send-request
+      `("op" "undef"
+        "ns" ,(cider-current-ns)
+        "symbol" ,sym)
+      (cider-interactive-eval-handler (current-buffer))))))
+
+;;; cider-run
+(defvar cider--namespace-history nil
+  "History of user input for namespace prompts.")
+
+(defun cider--var-namespace (var)
+  "Return the namespace of VAR.
+VAR is a fully qualified Clojure variable name as a string."
+  (replace-regexp-in-string "\\(?:#'\\)?\\(.*\\)/.*" "\\1" var))
+
+(defun cider-run (&optional function)
+  "Run -main or FUNCTION, prompting for its namespace if necessary.
+With a prefix argument, prompt for function to run instead of -main."
+  (interactive (list (when current-prefix-arg (read-string "Function name: "))))
+  (cider-ensure-connected)
+  (let ((name (or function "-main")))
+    (when-let* ((response (cider-nrepl-send-sync-request
+                           `("op" "ns-list-vars-by-name"
+                             "name" ,name))))
+      (if-let* ((vars (split-string (substring (nrepl-dict-get response "var-list") 1 -1))))
+          (cider-interactive-eval
+           (if (= (length vars) 1)
+               (concat "(" (car vars) ")")
+             (let* ((completions (mapcar #'cider--var-namespace vars))
+                    (def (or (car cider--namespace-history)
+                             (car completions))))
+               (format "(#'%s/%s)"
+                       (completing-read (format "Namespace (%s): " def)
+                                        completions nil t nil
+                                        'cider--namespace-history def)
+                       name))))
+        (user-error "No %s var defined in any namespace" (cider-propertize name 'fn))))))
 
 ;;; Insert (and eval) in REPL functionality
 (defvar cider-insert-commands-map
@@ -256,7 +288,7 @@ If invoked with a prefix ARG eval the expression after inserting it."
      ["Connect to a Clojure REPL" cider-connect
       :help "Connects to a REPL that's already running."])
     ("ClojureScript"
-     ["Start a ClojureScript REPL" cider-jack-in-clojurescript
+     ["Start a ClojureScript REPL" cider-jack-in-cljs
       :help "Starts an nREPL server and connects a ClojureScript REPL to it."]
      ["Connect to a ClojureScript REPL" cider-connect-clojurescript
       :help "Connects to a ClojureScript REPL that's already running."]
@@ -319,7 +351,7 @@ If invoked with a prefix ARG eval the expression after inserting it."
     ["Load another file" cider-load-file]
     ["Recursively load all files in directory" cider-load-all-files]
     ["Load all project files" cider-load-all-project-ns]
-    ["Refresh loaded code" cider-refresh]
+    ["Refresh loaded code" cider-ns-refresh]
     ["Run project (-main function)" cider-run])
   "Menu for CIDER mode eval commands.")
 
@@ -376,11 +408,39 @@ If invoked with a prefix ARG eval the expression after inserting it."
      ["Flush completion cache" cider-completion-flush-caches]))
   "Menu for CIDER interactions.")
 
+
+(declare-function cider-ns-refresh "cider-ns")
+(declare-function cider-browse-ns "cider-browse-ns")
+(declare-function cider-eval-ns-form "cider-eval")
+(declare-function cider-repl-set-ns "cider-repl")
+(declare-function cider-find-ns "cider-find")
+
+(defvar cider-ns-map
+  (let ((map (define-prefix-command 'cider-ns-map)))
+    (define-key map (kbd "b") #'cider-browse-ns)
+    (define-key map (kbd "M-b") #'cider-browse-ns)
+    (define-key map (kbd "e") #'cider-eval-ns-form)
+    (define-key map (kbd "M-e") #'cider-eval-ns-form)
+    (define-key map (kbd "f") #'cider-find-ns)
+    (define-key map (kbd "M-f") #'cider-find-ns)
+    (define-key map (kbd "n") #'cider-repl-set-ns)
+    (define-key map (kbd "M-n") #'cider-repl-set-ns)
+    (define-key map (kbd "r") #'cider-ns-refresh)
+    (define-key map (kbd "M-r") #'cider-ns-refresh)
+    map)
+  "CIDER NS keymap.")
+
+;; Those declares are needed, because we autoload all those commands when first
+;; used. That optimizes CIDER's initial load time.
 (declare-function cider-macroexpand-1 "cider-macroexpansion")
 (declare-function cider-macroexpand-all "cider-macroexpansion")
 (declare-function cider-selector "cider-selector")
 (declare-function cider-toggle-trace-ns "cider-tracing")
 (declare-function cider-toggle-trace-var "cider-tracing")
+(declare-function cider-find-resource "cider-find")
+(declare-function cider-find-keyword "cider-find")
+(declare-function cider-find-var "cider-find")
+
 (defconst cider-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-d") 'cider-doc-map)
@@ -405,7 +465,7 @@ If invoked with a prefix ARG eval the expression after inserting it."
     (define-key map (kbd "C-c C-u") #'cider-undef)
     (define-key map (kbd "C-c C-m") #'cider-macroexpand-1)
     (define-key map (kbd "C-c M-m") #'cider-macroexpand-all)
-    (define-key map (kbd "C-c M-n") #'cider-repl-set-ns)
+    (define-key map (kbd "C-c M-n") 'cider-ns-map)
     (define-key map (kbd "C-c M-i") #'cider-inspect)
     (define-key map (kbd "C-c M-t v") #'cider-toggle-trace-var)
     (define-key map (kbd "C-c M-t n") #'cider-toggle-trace-ns)
@@ -420,9 +480,9 @@ If invoked with a prefix ARG eval the expression after inserting it."
     (define-key map (kbd "C-c C-t") 'cider-test-commands-map)
     (define-key map (kbd "C-c M-s") #'cider-selector)
     (define-key map (kbd "C-c M-d") #'cider-describe-current-connection)
-    (define-key map (kbd "C-c C-=") #'cider-profile-map)
-    (define-key map (kbd "C-c C-x") #'cider-refresh)
+    (define-key map (kbd "C-c C-=") 'cider-profile-map)
     (define-key map (kbd "C-c C-q") #'cider-quit)
+    (define-key map (kbd "C-c M-r") #'cider-restart)
     (dolist (variable '(cider-mode-interactions-menu
                         cider-mode-eval-menu
                         cider-mode-menu))
@@ -447,7 +507,7 @@ If invoked with a prefix ARG eval the expression after inserting it."
         :help "Connects to a REPL that's already running."]
        ["Connect to a ClojureScript REPL" cider-connect-clojurescript
         :help "Connects to a ClojureScript REPL that's already running."]
-       ["Start a Clojure REPL, and a ClojureScript REPL" cider-jack-in-clojurescript
+       ["Start a Clojure REPL, and a ClojureScript REPL" cider-jack-in-cljs
         :help "Starts an nREPL server, connects a Clojure REPL to it, and then a ClojureScript REPL."]
        "--"
        ["View manual online" cider-view-manual])))

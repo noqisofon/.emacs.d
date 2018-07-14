@@ -93,7 +93,8 @@ cyclical data structures."
 (defvar-local cider-stacktrace-positive-filters nil)
 
 (defconst cider-error-buffer "*cider-error*")
-(add-to-list 'cider-ancillary-buffers cider-error-buffer)
+
+(make-obsolete 'cider-visit-error-buffer 'cider-selector "0.18")
 
 (defcustom cider-stacktrace-suppressed-errors '()
   "Errors that won't make the stacktrace buffer 'pop-over' your active window.
@@ -234,6 +235,7 @@ The error types are represented as strings."
 \\{cider-stacktrace-mode-map}"
   (when cider-special-mode-truncate-lines
     (setq-local truncate-lines t))
+  (setq-local sesman-system 'CIDER)
   (setq-local electric-indent-chars nil)
   (setq-local cider-stacktrace-hidden-frame-count 0)
   (setq-local cider-stacktrace-filters cider-stacktrace-default-filters)
@@ -585,6 +587,8 @@ Achieved by destructively manipulating the `cider-stacktrace-suppressed-errors' 
     (forward-line line-shift)
     (back-to-indentation)))
 
+(declare-function cider-find-var "cider-find")
+
 (defun cider-stacktrace-jump (&optional arg)
   "Find definition for stack frame at point, if available.
 The prefix ARG and `cider-prompt-for-symbol' decide whether to
@@ -709,8 +713,6 @@ This associates text properties to enable filtering and source navigation."
             (put-text-property (line-beginning-position) (line-end-position)
                                'cider-stacktrace-frame t)))
         (insert "\n")))))
-
-(declare-function cider-jump-to "cider-interaction")
 
 (defun cider-stacktrace-render-compile-error (buffer cause)
   "Emit into BUFFER the compile error CAUSE, and enable jumping to it."

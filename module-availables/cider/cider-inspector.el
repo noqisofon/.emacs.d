@@ -29,14 +29,13 @@
 
 (require 'cl-lib)
 (require 'seq)
-(require 'cider-interaction)
+(require 'cider-eval)
 
 ;; ===================================
 ;; Inspector Key Map and Derived Mode
 ;; ===================================
 
 (defconst cider-inspector-buffer "*cider-inspect*")
-(add-to-list 'cider-ancillary-buffers cider-inspector-buffer)
 
 ;;; Customization
 (defgroup cider-inspector nil
@@ -85,6 +84,7 @@ The page size can be also changed interactively within the inspector."
 \\{cider-inspector-mode-map}"
   (set-syntax-table clojure-mode-syntax-table)
   (setq-local electric-indent-chars nil)
+  (setq-local sesman-system 'CIDER)
   (when cider-special-mode-truncate-lines
     (setq-local truncate-lines t)))
 
@@ -244,7 +244,7 @@ Set the page size in paginated view to PAGE-SIZE."
 ;; Render Inspector from Structured Values
 (defun cider-inspector--render-value (value)
   "Render VALUE."
-  (cider-make-popup-buffer cider-inspector-buffer 'cider-inspector-mode)
+  (cider-make-popup-buffer cider-inspector-buffer 'cider-inspector-mode 'ancillary)
   (cider-inspector-render cider-inspector-buffer value)
   (cider-popup-buffer-display cider-inspector-buffer t)
   (when cider-inspector-fill-frame (delete-other-windows))

@@ -36,6 +36,7 @@
 (require 'color)
 (require 'seq)
 (require 'subr-x)
+(require 'thingatpt)
 
 ;; clojure-mode and CIDER
 (require 'cider-compat)
@@ -733,9 +734,9 @@ through a stack of help buffers.  Variables `help-back-label' and
     "Press <\\[describe-mode]> to see a list of the keybindings available (this will work in every Emacs buffer)."
     "Press <\\[cider-repl-handle-shortcut]> to quickly invoke some REPL command."
     "Press <\\[cider-switch-to-last-clojure-buffer]> to switch between the REPL and a Clojure source buffer."
-    "Press <\\[cider-find-var]> to jump to the source of something (e.g. a var, a Java method)."
     "Press <\\[cider-doc]> to view the documentation for something (e.g. a var, a Java method)."
     "Press <\\[cider-find-resource]> to find a resource on the classpath."
+    "Press <\\[cider-find-var]> to jump to the source of something (e.g. a var, a Java method)."
     "Press <\\[cider-selector]> to quickly select a CIDER buffer."
     "Press <\\[cider-test-run-ns-tests]> to run the tests for the current namespace."
     "Press <\\[cider-test-run-loaded-tests]> to run all loaded tests."
@@ -743,6 +744,10 @@ through a stack of help buffers.  Variables `help-back-label' and
     "Press <\\[cider-apropos]> to look for a symbol by some search string."
     "Press <\\[cider-apropos-documentation]> to look for a symbol that has some string in its docstring."
     "Press <\\[cider-eval-defun-at-point]> to eval the top-level form at point."
+    "Press <\\[cider-eval-defun-up-to-point]> to eval the top-level form up to the point."
+    "Press <\\[cider-eval-sexp-up-to-point]> to eval the current form up to the point."
+    "Press <\\[cider-eval-sexp-at-point]> to eval the current form around the point."
+    "Press <\\[cider-eval-sexp-at-point-in-context]> to eval the current form around the point in a user-provided context."
     "Press <\\[cider-eval-buffer]> to eval the entire source buffer."
     "Press <\\[cider-scratch]> to create a Clojure scratchpad. Pretty handy for prototyping."
     "Press <\\[cider-read-and-eval]> to evaluate some Clojure expression directly in the minibuffer."
@@ -754,8 +759,8 @@ through a stack of help buffers.  Variables `help-back-label' and
     "Press <\\[cider-inspect]> to inspect the preceding expression's result."
     "Press <C-u \\[cider-inspect]> to inspect the defun at point's result."
     "Press <C-u C-u \\[cider-inspect]> to read Clojure code from the minibuffer and inspect its result."
-    "Press <\\[cider-refresh]> to reload modified and unloaded namespaces."
-    "You can define Clojure functions to be called before and after `cider-refresh' (see `cider-refresh-before-fn' and `cider-refresh-after-fn'."
+    "Press <\\[cider-ns-refresh]> to reload modified and unloaded namespaces."
+    "You can define Clojure functions to be called before and after `cider-ns-refresh' (see `cider-ns-refresh-before-fn' and `cider-ns-refresh-after-fn'."
     "Press <\\[cider-describe-current-connection]> to view information about the connection."
     "Press <\\[cider-undef]> to undefine a symbol in the current namespace."
     "Press <\\[cider-interrupt]> to interrupt an ongoing evaluation."

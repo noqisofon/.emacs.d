@@ -184,6 +184,7 @@
 
 \\{cider-docview-mode-map}"
   (setq buffer-read-only t)
+  (setq-local sesman-system 'CIDER)
   (when cider-special-mode-truncate-lines
     (setq-local truncate-lines t))
   (setq-local electric-indent-chars nil)
@@ -224,9 +225,6 @@ opposite of what that option dictates."
            "Javadoc for"
            #'cider-javadoc-handler))
 
-(declare-function cider-find-file "cider-common")
-(declare-function cider-jump-to "cider-interaction")
-
 (defun cider-docview-source ()
   "Open the source for the current symbol, if available."
   (interactive)
@@ -263,12 +261,11 @@ opposite of what that option dictates."
     (error "%s cannot be looked up on Grimoire" cider-docview-symbol)))
 
 (defconst cider-doc-buffer "*cider-doc*")
-(add-to-list 'cider-ancillary-buffers cider-doc-buffer)
 
 (defun cider-create-doc-buffer (symbol)
   "Populates *cider-doc* with the documentation for SYMBOL."
   (when-let* ((info (cider-var-info symbol)))
-    (cider-docview-render (cider-make-popup-buffer cider-doc-buffer) symbol info)))
+    (cider-docview-render (cider-make-popup-buffer cider-doc-buffer nil 'ancillary) symbol info)))
 
 (defun cider-doc-lookup (symbol)
   "Look up documentation for SYMBOL."
