@@ -42,6 +42,7 @@
 (require-if-exists 040-haskell)
 (require-if-exists 040-perl6)
 (require-if-exists 040-ocaml)
+(require-if-exists 040-sml)
 (require-if-exists 040-fsharp)
 (require-if-exists 040-ruby)
 (require-if-exists 040-rust)
