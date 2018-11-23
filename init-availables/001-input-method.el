@@ -2,7 +2,7 @@
 
 ;;; 001-input-method.el ---
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2014-2018  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -27,10 +27,10 @@
 ;;; Code:
 
 (cond (linuxp
-       (load "011-mozc"))
+       (require-if-exists 011-mozc))
 
       (windows-nt-p
-       (load "011-ime")))
+       (require-if-exists 011-ime)))
 
 (provide '001-input-method)
 ;;; 001-input-method.el ends here

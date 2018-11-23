@@ -2,7 +2,7 @@
 
 ;;; 040-lisp-common.el ---
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2014-2018  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -32,8 +32,8 @@
                             (set (make-local-variable 'lisp-indent-function)
                                  'common-lisp-indent-function)))
 
-(load "042-clojure")
-(load "042-scheme")
+(require-if-exists 042-clojure)
+(require-if-exists 042-scheme)
 
 (provide '040-lisp-common)
 ;;; 040-lisp-common.el ends here

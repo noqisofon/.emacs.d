@@ -1,7 +1,7 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 ;;; 002-emmet.el ---
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2014-2018  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -28,7 +28,6 @@
                    (add-hook 'sgml-mode-hook 'emmet-mode)
                    (add-hook 'html-mode-hook 'emmet-mode)
                    (add-hook 'text-mode-hook 'emmet-mode))
-
 
 (provide '002-emmet)
 ;;; 002-emmet.el ends here

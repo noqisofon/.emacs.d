@@ -16,3 +16,5 @@
   (setq linum-format "%7d"))
 
 (global-linum-mode 1)
+
+(provide '002-line-number)

@@ -2,7 +2,7 @@
 
 ;;; 011-mozc.el --- 
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2014-2018  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -40,3 +40,5 @@
                    (add-hook 'mozc-mode-hook
                              (lambda ()
                                (define-key mozc-mode-map (kbd "<zenkaku-hankaku>") 'toggle-input-method))))
+
+(provide '011-mozc)

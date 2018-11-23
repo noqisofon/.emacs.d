@@ -1,12 +1,14 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
 ;;; Code:
-(require '010-ascii-doc)
-(require '010-org-mode)
-(require '010-markdown)
-(require '010-haml)
-(require '010-sass)
-(require '010-less)
-(require '010-sgml)
-(require '010-yaml)
-(require '010-jade)
+(require-if-exists 010-ascii-doc)
+(require-if-exists 010-org-mode)
+(require-if-exists 010-markdown)
+(require-if-exists 010-haml)
+(require-if-exists 010-sass)
+(require-if-exists 010-less)
+(require-if-exists 010-sgml)
+(require-if-exists 010-yaml)
+(require-if-exists 010-jade)
+
+(provide '010-light-markup-language)

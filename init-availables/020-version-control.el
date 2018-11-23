@@ -2,5 +2,7 @@
 
 ;;; Code:
 
-(load "020-git")
-(load "020-magit")
+(require-if-exists 020-git)
+(require-if-exists 020-magit)
+
+(provide '020-version-control)

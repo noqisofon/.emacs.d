@@ -26,22 +26,22 @@
 
 ;;; Code:
 
-(load "001-input-method")
-(load "001-key-bind")
-(load "001-package")
-(load "001-recent")
-(load "001-session")
-(load "001-editor-config")
+(require-if-exists 001-input-method)
+(require-if-exists 001-key-bind)
+(require-if-exists 001-package)
+(require-if-exists 001-recent)
+(require-if-exists 001-session)
+(require-if-exists 001-editor-config)
 
-(load "002-eshell")
-(load "002-emmet")
-(load "002-flycheck")
-(load "002-eldoc")
+(require-if-exists 002-eshell)
+(require-if-exists 002-emmet)
+(require-if-exists 002-flycheck)
+(require-if-exists 002-eldoc)
 
-(load "010-light-markup-language")
-(load "020-version-control")
+(require-if-exists 010-light-markup-language)
+(require-if-exists 020-version-control)
 
-(load "040-programing-language")
+(require-if-exists 040-programing-language)
 
 (provide '000-init)
 ;;; 000-init.el ends here

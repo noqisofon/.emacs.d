@@ -25,3 +25,5 @@
 ;; 
 ;; 終了時にオートセーブファイルを削除しないようにします。
 (setq delete-auto-save-files nil)
+
+(provide '000-backup)

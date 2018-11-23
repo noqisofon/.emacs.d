@@ -2,7 +2,7 @@
 
 ;;; 000-scroll-bar.el ---
 
-;; Copyright (C) 2014  ned rihine
+;; Copyright (C) 2014-2018  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 

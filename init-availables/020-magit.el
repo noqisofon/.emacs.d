@@ -3,3 +3,4 @@
 ;;; Code:
 (lazyload (magit-status) "magit")
 
+(provide '020-magit)

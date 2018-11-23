@@ -20,3 +20,5 @@
                                 (file-name-history 10000)))
 ;; 初期化後に呼び出されるフックにセッションの初期化用関数を引っ掛けます。
 (add-hook 'after-init-hook 'session-initialize)
+
+(provide '001-session)

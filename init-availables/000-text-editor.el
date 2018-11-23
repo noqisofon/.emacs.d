@@ -43,5 +43,7 @@
 ;; EOB を表示します。
 (setq-default indicate-empty-lines t)
 
-(load "002-color-theme")
-(load "002-line-number")
+(require-if-exists 002-color-theme)
+(require-if-exists 002-line-number)
+
+(provide '000-text-editor)

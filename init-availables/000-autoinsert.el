@@ -1,6 +1,9 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
 ;;; Code:
+(eval-when-compile
+  (require 'cl))
+
 ;; テンプレートが入っているディレクトリを指定します。
 (setq auto-insert-directory "~/Templates/auto-insert/")
 
@@ -14,8 +17,6 @@
                ("\\.cpp$" . ["template.cpp" my-template])
                ("\\.hxx$" . ["template.hxx" my-template])
                ) auto-insert-alist))
-
-(require 'cl)
 
 (defvar template-replacements-alists
   '(
@@ -35,3 +36,5 @@
   (message "done."))
 
 (add-hook 'find-file-not-found-hooks 'auto-insert)
+
+(provide '000-autoinsert)

@@ -10,3 +10,5 @@
 (push '("^.gitattributes$" . gitattributes-mode) auto-mode-alist)
 (push '("^.gitconfig$" . gitconfig-mode) auto-mode-alist)
 (push '("^.gitignore$" . gitignore-mode) auto-mode-alist)
+
+(provide '020-git)

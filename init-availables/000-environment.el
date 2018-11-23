@@ -1,11 +1,11 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
-(require '000-platform)
-(require '000-locale)
+(require-if-exists 000-platform)
+(require-if-exists 000-locale)
 
-(require 'xyzzy-like-title)
-(require 'e-arrows-macro)
-(require 'bookshelf)
+(require-if-exists xyzzy-like-title)
+(require-if-exists e-arrows-macro)
+(require-if-exists bookshelf)
 
 ;; カレントディレクトリの位置を $HOME に設定します。
 (cd "~/")
@@ -39,16 +39,16 @@
 ;; 終了時にバイトコンパイルを行います。
 (add-hook 'kill-emacs-query-functions 'after-byte-compile)
 
-(load "000-display")
-(load "000-font")
-(load "000-text-editor")
-(load "000-scroll-bar")
-(load "000-backup")
-(load "000-mode-line")
-(load "000-emacs-client")
-(load "000-autoinsert")
-(load "000-elscreen")
-(load "000-auto-complete")
-(load "000-slime")
+(require-if-exists 000-display)
+(require-if-exists 000-font)
+(require-if-exists 000-text-editor)
+(require-if-exists 000-scroll-bar)
+(require-if-exists 000-backup)
+(require-if-exists 000-mode-line)
+(require-if-exists 000-emacs-client)
+(require-if-exists 000-autoinsert)
+(require-if-exists 000-elscreen)
+(require-if-exists 000-auto-complete)
+(require-if-exists 000-slime)
 
 (provide '000-environment)

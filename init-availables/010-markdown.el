@@ -14,7 +14,6 @@
  (let ((font-family-name "Ricty")
        (font-size        (* 10 10)))
    (set-face-attribute 'markdown-code-face        nil :family font-family-name :height font-size)
-   (set-face-attribute 'markdown-inline-code-face nil :family font-family-name :height font-size)
-   (set-face-attribute 'markdown-code-face        nil :family font-family-name :height font-size)))
+   (set-face-attribute 'markdown-inline-code-face nil :family font-family-name :height font-size)))
 
 (provide '010-markdown)

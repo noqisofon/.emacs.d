@@ -4,3 +4,5 @@
 
 (load-theme 'bright-forest t)
 (enable-theme 'bright-forest)
+
+(provide '002-color-theme)

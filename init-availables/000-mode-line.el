@@ -18,3 +18,5 @@
     (display-time)
   ;; else
   (display-time-mode 1))
+
+(provide '000-mode-line)
