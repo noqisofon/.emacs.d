@@ -1,10 +1,12 @@
 ;;; -*- mode: emacs-lisp; coding: utf-8; indent-tabs-mode: nil; -*-
 
+(require 'e-arrows-macro)
+(require-if-exists when-i-have-that)
+
 (require-if-exists 000-platform)
 (require-if-exists 000-locale)
 
 (require-if-exists xyzzy-like-title)
-(require-if-exists e-arrows-macro)
 (require-if-exists bookshelf)
 
 ;; カレントディレクトリの位置を $HOME に設定します。

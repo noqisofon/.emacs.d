@@ -64,20 +64,12 @@ current repl's (as per slime-output-buffer) window."
   :group 'slime-repl)
 
 (defface slime-repl-prompt-face
-  (if (slime-face-inheritance-possible-p)
-      '((t (:inherit font-lock-keyword-face)))
-    '((((class color) (background light)) (:foreground "Purple"))
-      (((class color) (background dark)) (:foreground "Cyan"))
-      (t (:weight bold))))
+    '((t (:inherit font-lock-keyword-face)))
   "Face for the prompt in the SLIME REPL."
   :group 'slime-repl)
 
 (defface slime-repl-output-face
-  (if (slime-face-inheritance-possible-p)
-      '((t (:inherit font-lock-string-face)))
-    '((((class color) (background light)) (:foreground "RosyBrown"))
-      (((class color) (background dark)) (:foreground "LightSalmon"))
-      (t (:slant italic))))
+    '((t (:inherit font-lock-string-face)))
   "Face for Lisp output in the SLIME REPL."
   :group 'slime-repl)
 
@@ -164,8 +156,7 @@ current repl's (as per slime-output-buffer) window."
 
 (defun slime-repl-insert-banner ()
   (when (zerop (buffer-size))
-    (let ((welcome (concat "; SLIME " (or (slime-changelog-date)
-                                          "- ChangeLog file not found"))))
+    (let ((welcome (concat "; SLIME " slime-version)))
       (insert welcome))))
 
 (defun slime-init-output-buffer (connection)
@@ -453,8 +444,6 @@ joined together."))
   ("\M-r" 'slime-repl-previous-matching-input)
   ("\M-s" 'slime-repl-next-matching-input)
   ("\C-c\C-c" 'slime-interrupt)
-  ("\t" 'slime-indent-and-complete-symbol)
-  ("\M-\t" 'slime-complete-symbol)
   (" " 'slime-space)
   ((string slime-repl-shortcut-dispatch-char) 'slime-handle-repl-shortcut)
   ("\C-c\C-o" 'slime-repl-clear-output)
@@ -463,7 +452,8 @@ joined together."))
   ("\C-c\C-n" 'slime-repl-next-prompt)
   ("\C-c\C-p" 'slime-repl-previous-prompt)
   ("\C-c\C-z" 'slime-nop)
-  ("\C-cI" 'slime-repl-inspect))
+  ("\C-cI" 'slime-repl-inspect)
+  ("\C-x\C-e" 'slime-eval-last-expression))
 
 (slime-define-keys slime-inspector-mode-map
   ((kbd "M-RET") 'slime-inspector-copy-down-to-repl))
@@ -494,6 +484,8 @@ joined together."))
   (lisp-mode-variables t)
   (set (make-local-variable 'lisp-indent-function)
        'common-lisp-indent-function)
+  (slime-setup-completion)
+  (set (make-local-variable 'tab-always-indent) 'complete)
   (setq font-lock-defaults nil)
   (setq mode-name "REPL")
   (setq slime-current-thread :repl-thread)
@@ -505,7 +497,6 @@ joined together."))
               'slime-repl-safe-save-merged-history
               'append t))
   (add-hook 'kill-emacs-hook 'slime-repl-save-all-histories)
-  (slime-setup-command-hooks)
   ;; At the REPL, we define beginning-of-defun and end-of-defun to be
   ;; the start of the previous prompt or next prompt respectively.
   ;; Notice the interplay with SLIME-REPL-BEGINNING-OF-DEFUN.
@@ -1206,6 +1197,7 @@ The handler will use qeuery to ask the use if the error should be ingored."
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-m" 'slime-repl-return)
     (define-key map [return] 'slime-repl-return)
+    (define-key map (kbd "TAB") 'self-insert-command)
     (define-key map "\C-c\C-b" 'slime-repl-read-break)
     (define-key map "\C-c\C-c" 'slime-repl-read-break)
     (define-key map [remap slime-indent-and-complete-symbol] 'ignore)

@@ -986,7 +986,7 @@ to work properly with code that includes attributes."
                                                       'c-decl-id-start)
                                  (c-forward-syntactic-ws))
                                (save-match-data
-                                 (ignore-errors
+                                 (with-no-warnings
                                    (condition-case nil
                                        (c-font-lock-declarators limit t nil)
                                      (wrong-number-of-arguments
@@ -1128,6 +1128,12 @@ to work properly with code that includes attributes."
            ;; due to the energetic efforts of c-forward-type.
            ,`("\\<\\(namespace\\)[ \t\n\r\f\v]+\\(\\(?:[A-Za-z0-9_]+\\.\\)*[A-Za-z0-9_]+\\)"
               2 font-lock-constant-face t)
+
+
+           ;; Highlight function-invocation.
+           ;; (this may in the future use font-lock-function-call-face, if standardized)
+           ,`(,"\\.\\([A-Za-z0-9_]+\\)("
+              1 font-lock-function-name-face t)
 
 
            ))
@@ -2502,7 +2508,17 @@ are the string substitutions (see `format')."
 	     t)
 	   (c-put-font-lock-face start (1+ start) 'font-lock-warning-face)))))
 
-(defun c-looking-at-inexpr-block (lim containing-sexp &optional check-at-end)
+(advice-add 'c-looking-at-inexpr-block
+            :around 'csharp--c-looking-at-inexpr-block-hack)
+
+(defun csharp--c-looking-at-inexpr-block-hack (orig-fun &rest args)
+  (apply
+   (if (eq major-mode 'csharp-mode)
+       #'csharp--c-looking-at-inexpr-block
+     orig-fun)
+   args))
+
+(defun csharp--c-looking-at-inexpr-block (lim containing-sexp &optional check-at-end)
   ;; Return non-nil if we're looking at the beginning of a block
   ;; inside an expression.  The value returned is actually a cons of
   ;; either 'inlambda, 'inexpr-statement or 'inexpr-class and the
@@ -3061,10 +3077,10 @@ Key bindings:
 
   ;; The paragraph-separate variable was getting stomped by
   ;; other hooks, so it must reside here.
-  (setq paragraph-separate
-        "[ \t]*\\(//+\\|\\**\\)\\([ \t]+\\|[ \t]+<.+?>\\)$\\|^\f")
+  (setq-local paragraph-separate
+              "[ \t]*\\(//+\\|\\**\\)\\([ \t]+\\|[ \t]+<.+?>\\)$\\|^\f")
 
-  (setq beginning-of-defun-function 'csharp-move-back-to-beginning-of-defun)
+  (setq-local beginning-of-defun-function 'csharp-move-back-to-beginning-of-defun)
   ;; `end-of-defun-function' can remain forward-sexp !!
 
   (set (make-local-variable 'comment-auto-fill-only-comments) t)
@@ -3092,4 +3108,3 @@ Key bindings:
 (provide 'csharp-mode)
 
 ;;; csharp-mode.el ends here
-
