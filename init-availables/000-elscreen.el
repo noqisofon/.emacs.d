@@ -29,55 +29,7 @@
   (require-if-exists elscreen)
   (require-if-exists elscreen-server)
 
-  ;; タブを表示します(非表示にする場合は nil を設定する)。
-  (setq elscreen-display-tab t)
-
-  ;; 自動でスクリーンを作成します。
-  (defmacro elscreen-create-automatically (ad-do-it)
-    `(if (not (elscreen-one-screen-p))
-         ,ad-do-it
-       (elscreen-create)
-       (elscreen-notify-screen-modification 'force-immediately)
-       (elscreen-message "New screen is automatically created")))
-
-  (defadvice elscreen-next (around elscreen-create-automatically activate)
-    (elscreen-create-automatically ad-do-it))
-
-  (defadvice elscreen-previous (around elscreen-create-automatically activate)
-    (elscreen-create-automatically ad-do-it))
-
-  (defadvice elscreen-toggle (around elscreen-create-automatically activate)
-    (elscreen-create-automatically ad-do-it))
-
-  (defun elscreen-current-directory ()
-    (let* (current-dir
-           (active-file-name
-            (with-current-buffer
-                (let* ((current-screen (car (elscreen-get-conf-list 'screen-history)))
-                       (property (cadr (assoc current-screen
-                                              (elscreen-get-conf-list 'screen-property)))))
-                  (marker-buffer (nth 2 property)))
-              (progn
-                (setq current-dir (expand-file-name (cadr (split-string (pwd)))))
-                (buffer-file-name)))))
-      (if active-file-name
-          (file-name-directory active-file-name)
-        current-dir)))
-
-
-  (defun non-elscreen-current-directory ()
-    (let* (current-dir
-           (current-buffer
-            (nth 1 (assoc 'buffer-list
-                          (nth 1 (nth 1 (current-frame-configuration))))))
-           (active-file-name
-            (with-current-buffer current-buffer
-              (progn
-                (setq current-dir (expand-file-name (cadr (split-string (pwd)))))
-                (buffer-file-name)))))
-      (if active-file-name
-          (file-name-directory active-file-name)
-        current-dir))))
+  (elscreen-start))
 
 
 (provide '000-elscreen)
