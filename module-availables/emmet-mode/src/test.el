@@ -655,6 +655,11 @@
   #'emmet-wrap-with-markup-test
   '((("div>ul>li" "I am some\nmultiline\n  text") . "<div>\n  <ul>\n    <li>I am some\n      multiline\n      text</li>\n  </ul>\n</div>")))
 
+(emmet-run-test-case "Wrap with per-line markup (trailing *)"
+                     #'emmet-wrap-with-markup-test
+                     '((("div>ul>li*" "I am some\nmultiline\n  text") .
+                        "<div>\n  <ul>\n    <li>I am some</li>\n    <li>multiline</li>\n    <li>  text</li>\n  </ul>\n</div>")))
+
 ;; Regression test for #54 (broken emmet-find-left-bound behavior
 ;;   after tag with attributes)
 (defun emmet-regression-54-test (lis)
@@ -700,6 +705,35 @@
 (emmet-run-test-case "JSX's className 2"
   #'emmet-expand-jsx-className?-test
   '(((".jsx>ul.lis>li.itm{x}*2") . "<div className=\"jsx\">\n  <ul className=\"lis\">\n    <li className=\"itm\">x</li>\n    <li className=\"itm\">x</li>\n  </ul>\n</div>")))
+
+(defun emmet-self-closing-tag-style-test (lis)
+  (let ((es (car lis))
+        (emmet-preview-default nil))
+    (with-temp-buffer
+      (emmet-mode 1)
+      (insert es)
+      (emmet-expand-line nil)
+      (buffer-string))))
+
+;; By default, `emmet-self-closing-tag-style' must not break any test code.
+(emmet-run-test-case "Self closing tag style 1"
+  #'emmet-self-closing-tag-style-test
+  '((("meta") . "<meta/>")))
+
+(let ((emmet-self-closing-tag-style "/"))
+  (emmet-run-test-case "Self closing tag style 2"
+    #'emmet-self-closing-tag-style-test
+    '((("meta") . "<meta/>"))))
+
+(let ((emmet-self-closing-tag-style " /"))
+  (emmet-run-test-case "Self closing tag style 3"
+    #'emmet-self-closing-tag-style-test
+    '((("meta") . "<meta />"))))
+
+(let ((emmet-self-closing-tag-style ""))
+  (emmet-run-test-case "Self closing tag style 4"
+    #'emmet-self-closing-tag-style-test
+    '((("meta") . "<meta>"))))
 
 ;; start
 (emmet-test-cases)
