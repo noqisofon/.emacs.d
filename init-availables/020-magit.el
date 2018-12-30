@@ -3,4 +3,6 @@
 ;;; Code:
 (lazyload (magit-status) "magit")
 
+(global-set-key (kbd "C-x g") 'magit-status)
+
 (provide '020-magit)
