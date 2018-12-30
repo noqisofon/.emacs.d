@@ -24,9 +24,29 @@
 
 ;;; Code:
 (require-if-exists typescript)
-(require-if-exists tss)
+(require-if-exists tide)
 
-(push '("\\.ts$" . typescript-mode) auto-mode-alist)
+(defun setup-tide-mode ()
+  (interactive)
+  (tide-setup)
+  (flycheck-mode +1)
+  (setq flycheck-check-syntax-automatically '(save mode-enabled))
+  (eldoc-mode +1)
+  (tide-hl-identifier-mode +1)
+  ;; company is an optional dependency. You have to
+  ;; install it separately via package-install
+  ;; `M-x package-install [ret] company`
+  (company-mode +1))
+
+(push '("\\.ts$" . tide-mode) auto-mode-alist)
+
+;; aligns annotation to the right hand side
+(setq company-tooltip-align-annotations t)
+
+;; formats the buffer before saving
+(add-hook 'before-save-hook 'tide-format-before-save)
+
+(add-hook 'typescript-mode-hook #'setup-tide-mode)
 
 ;; (defun typescript-setup ()
 ;;   (setq typescript-indent-level 4)
@@ -34,8 +54,8 @@
 ;;   ;; (flycheck-typescript-tslint-setup)
 ;;   (tss-setup-current-buffer))
 
-(when (fboundp 'tss-config-default)
-  (tss-config-default))
+;; (when (fboundp 'tss-config-default)
+;;   (tss-config-default))
 
 ;; (add-hook 'typescript-mode-hook 'typescript-setup)
 ;; (add-hook 'kill-buffer-hook     'tss--delete-process t)

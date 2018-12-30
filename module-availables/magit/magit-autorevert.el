@@ -1,6 +1,6 @@
 ;;; magit-autorevert.el --- revert buffers when files in repository change  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2010-2016  The Magit Project Contributors
+;; Copyright (C) 2010-2018  The Magit Project Contributors
 ;;
 ;; You should have received a copy of the AUTHORS.md file which
 ;; lists all contributors.  If not, see http://magit.vc/authors.
@@ -30,10 +30,15 @@
 
 (require 'autorevert)
 
+;;; Options
+
 (defgroup magit-auto-revert nil
   "Revert buffers when files in repository change."
+  :link '(custom-group-link auto-revert)
+  :link '(info-link "(magit)Automatic Reverting of File-Visiting Buffers")
   :group 'auto-revert
-  :group 'magit-extensions)
+  :group 'magit-essentials
+  :group 'magit-modes)
 
 (defcustom auto-revert-buffer-list-filter nil
   "Filter that determines which buffers `auto-revert-buffers' reverts.
@@ -56,6 +61,7 @@ is enabled."
   :package-version '(magit . "2.4.2")
   :group 'auto-revert
   :group 'magit-auto-revert
+  :group 'magit-related
   :type '(radio (const :tag "no filter" nil)
                 (function-item magit-auto-revert-buffer-p)
                 (function-item magit-auto-revert-repository-buffer-p)
@@ -93,6 +99,8 @@ seconds of user inactivity.  That is not desirable."
   :group 'magit-auto-revert
   :type 'boolean)
 
+;;; Mode
+
 (defun magit-turn-on-auto-revert-mode-if-desired (&optional file)
   (if file
       (--when-let (find-buffer-visiting file)
@@ -102,28 +110,28 @@ seconds of user inactivity.  That is not desirable."
                (file-readable-p buffer-file-name)
                (magit-toplevel)
                (or (not magit-auto-revert-tracked-only)
-                   (magit-file-tracked-p buffer-file-name)))
-      (auto-revert-mode))))
-
-;;;###autoload
-(defvar magit-revert-buffers t)
-(make-obsolete-variable 'magit-revert-buffers 'magit-auto-revert-mode
-                        "Magit 2.4.0")
+                   (magit-file-tracked-p buffer-file-name))
+               (not auto-revert-mode)         ; see #3014
+               (not global-auto-revert-mode)) ; see #3460
+      (auto-revert-mode 1))))
 
 ;;;###autoload
 (define-globalized-minor-mode magit-auto-revert-mode auto-revert-mode
   magit-turn-on-auto-revert-mode-if-desired
   :package-version '(magit . "2.4.0")
-  :group 'magit
+  :link '(info-link "(magit)Automatic Reverting of File-Visiting Buffers")
   :group 'magit-auto-revert
-  ;; When `global-auto-revert-mode' is enabled, then this mode is
-  ;; redundant.  When `magit-revert-buffers' is nil, then the user has
-  ;; opted out of the automatic reverts while the old implementation
-  ;; was still in use.  In all other cases enable the mode because if
-  ;; buffers are not automatically reverted that would make many very
-  ;; common tasks much more cumbersome.
-  :init-value (and magit-revert-buffers
-                   (not global-auto-revert-mode)
+  :group 'magit-essentials
+  ;; - When `global-auto-revert-mode' is enabled, then this mode is
+  ;;   redundant.
+  ;; - In all other cases enable the mode because if buffers are not
+  ;;   automatically reverted that would make many very common tasks
+  ;;   much more cumbersome.
+  ;; - When `magit-revert-buffers' is nil, then the user has opted out
+  ;;   of the automatic reverts while a very old implementation was
+  ;;   still in use.  We continued to respect that setting for another
+  ;;   two and a half years, but no longer do so now.
+  :init-value (and (not global-auto-revert-mode)
                    (not noninteractive)))
 ;; - Unfortunately `:init-value t' only sets the value of the mode
 ;;   variable but does not cause the mode function to be called.
@@ -143,9 +151,7 @@ seconds of user inactivity.  That is not desirable."
 Do not use this function elsewhere, and don't remove it from
 the `after-init-hook'.  For more information see the comments
 and code surrounding the definition of this function."
-  ;; `magit-revert-buffers' may have been set to nil before the alias
-  ;; had been established, so consult the value of both variables.
-  (if (and magit-auto-revert-mode magit-revert-buffers)
+  (if magit-auto-revert-mode
       (let ((start (current-time)))
         (magit-message "Turning on magit-auto-revert-mode...")
         (magit-auto-revert-mode 1)
@@ -250,11 +256,6 @@ located.  If there is no current repository, then return FALLBACK
 (advice-add 'auto-revert-buffers :before
             'auto-revert-buffers--buffer-list-filter)
 
-(custom-add-to-group 'magit 'auto-revert-check-vc-info 'custom-variable)
-
-;;; magit-autorevert.el ends soon
+;;; _
 (provide 'magit-autorevert)
-;; Local Variables:
-;; indent-tabs-mode: nil
-;; End:
 ;;; magit-autorevert.el ends here

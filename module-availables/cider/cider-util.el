@@ -105,76 +105,16 @@ positions.  Else returns the substring from START to END."
   (funcall (if bounds #'list #'buffer-substring-no-properties)
            start end))
 
-(defun cider-top-level-comment-p ()
-  "Return non-nil if point is in a comment form."
-  (save-excursion
-    (end-of-defun)
-    (clojure-backward-logical-sexp 1)
-    (forward-char 1)
-    (clojure-forward-logical-sexp 1)
-    (clojure-backward-logical-sexp 1)
-    (looking-at-p "comment")))
-
-(defcustom cider-eval-toplevel-inside-comment-form nil
-  "Eval top level forms inside comment forms instead of the comment form itself.
-Experimental.  Function `cider-defun-at-point' is used extensively so if we
-change this heuristic it needs to be bullet-proof and desired.  While
-testing, give an easy way to turn this new behavior off."
-  :group 'cider
-  :type 'boolean
-  :package-version '(cider . "0.18.0"))
-
-(defun cider-sexp-starts-until-position (position)
-  "Returns the starting points for forms before POSITION.
-Positions are in descending order to aide in finding the first starting
-position before the current position."
-  (save-excursion
-    (let (sexp-positions)
-      (condition-case nil
-          (while (< (point) position)
-            (clojure-forward-logical-sexp 1)
-            (clojure-backward-logical-sexp 1)
-            (push (point) sexp-positions)
-            (clojure-forward-logical-sexp 1))
-        (scan-error nil))
-      sexp-positions)))
-
-(defun cider-defun-inside-comment-form (&optional bounds)
-  "Return the toplevel form inside a comment containing point.
-Assumes point is inside a (comment ....) form and will return the text of
-that form or if BOUNDS, will return a list of the starting and ending
-position."
-  (save-excursion
-    (save-match-data
-      (let ((original-position (point))
-            cider-comment-start cider-comment-end)
-        (end-of-defun)
-        (setq cider-comment-end (point))
-        (clojure-backward-logical-sexp 1) ;; beginning of comment form
-        (setq cider-comment-start (point))
-        (forward-char 1)                  ;; skip paren so we start at comment
-        (clojure-forward-logical-sexp)    ;; skip past the comment form itself
-        (if-let* ((sexp-start (seq-find (lambda (beg-pos) (< beg-pos original-position))
-                                        (cider-sexp-starts-until-position cider-comment-end))))
-            (progn
-              (goto-char sexp-start)
-              (clojure-forward-logical-sexp 1)
-              (cider--text-or-limits bounds sexp-start (point)))
-          (cider--text-or-limits bounds cider-comment-start cider-comment-end))))))
-
 (defun cider-defun-at-point (&optional bounds)
   "Return the text of the top level sexp at point.
 If BOUNDS is non-nil, return a list of its starting and ending position
 instead."
-  (if (and cider-eval-toplevel-inside-comment-form
-           (cider-top-level-comment-p))
-      (cider-defun-inside-comment-form bounds)
-    (save-excursion
-      (save-match-data
-        (end-of-defun)
-        (let ((end (point)))
-          (clojure-backward-logical-sexp 1)
-          (cider--text-or-limits bounds (point) end))))))
+  (save-excursion
+    (save-match-data
+      (end-of-defun)
+      (let ((end (point)))
+        (clojure-backward-logical-sexp 1)
+        (cider--text-or-limits bounds (point) end)))))
 
 (defun cider-ns-form ()
   "Retrieve the ns form."
@@ -464,7 +404,7 @@ plugin or dependency with:
 
 (defvar cider-version)
 
-(defconst cider-manual-url "http://docs.cider.mx/en/%s/"
+(defconst cider-manual-url "https://docs.cider.mx/en/%s/"
   "The URL to CIDER's manual.")
 
 (defun cider--manual-version ()
@@ -761,7 +701,7 @@ through a stack of help buffers.  Variables `help-back-label' and
     "Press <C-u C-u \\[cider-inspect]> to read Clojure code from the minibuffer and inspect its result."
     "Press <\\[cider-ns-refresh]> to reload modified and unloaded namespaces."
     "You can define Clojure functions to be called before and after `cider-ns-refresh' (see `cider-ns-refresh-before-fn' and `cider-ns-refresh-after-fn'."
-    "Press <\\[cider-describe-current-connection]> to view information about the connection."
+    "Press <\\[cider-describe-connection]> to view information about the connection."
     "Press <\\[cider-undef]> to undefine a symbol in the current namespace."
     "Press <\\[cider-interrupt]> to interrupt an ongoing evaluation."
     "Use <M-x customize-group RET cider RET> to see every possible setting you can customize."
@@ -772,7 +712,9 @@ through a stack of help buffers.  Variables `help-back-label' and
     "Exploring CIDER's menu-bar entries is a great way to discover features."
     "Keep in mind that some commands don't have a keybinding by default. Explore CIDER!"
     "Tweak `cider-repl-prompt-function' to customize your REPL prompt."
-    "Tweak `cider-eldoc-ns-function' to customize the way namespaces are displayed by eldoc.")
+    "Tweak `cider-eldoc-ns-function' to customize the way namespaces are displayed by eldoc."
+    "For no middleware, low-tech and reliable namespace reloading use <\\[cider-ns-reload]>."
+    "Press <\\[cider-load-buffer-and-switch-to-repl-buffer]> to load the current buffer and switch to the REPL buffer afterwards.")
   "Some handy CIDER tips."
   )
 

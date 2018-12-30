@@ -315,22 +315,31 @@ client process connection.  Unless NO-BANNER is non-nil, insert a banner."
   (when cider-repl-display-in-current-window
     (add-to-list 'same-window-buffer-names (buffer-name buffer)))
   (pcase cider-repl-pop-to-buffer-on-connect
-    (`display-only (display-buffer buffer))
+    (`display-only
+     (let ((orig-buffer (current-buffer)))
+       (display-buffer buffer)
+       ;; User popup-rules (specifically `:select nil') can cause the call to
+       ;; `display-buffer' to reset the current Emacs buffer to the clj/cljs
+       ;; buffer that the user ran `jack-in' from - we need the current-buffer
+       ;; to be the repl to initialize, so reset it back here to be resilient
+       ;; against user config
+       (set-buffer orig-buffer)))
     ((pred identity) (pop-to-buffer buffer)))
   (cider-repl-set-initial-ns buffer)
   (cider-repl-require-repl-utils)
   (cider-repl-set-config)
   (unless no-banner
     (cider-repl--insert-banner-and-prompt buffer))
+  (with-current-buffer buffer
+    (set-window-point (get-buffer-window) (point-max)))
   buffer)
 
 (defun cider-repl--insert-banner-and-prompt (buffer)
   "Insert REPL banner and REPL prompt in BUFFER."
   (with-current-buffer buffer
-    (when (zerop (buffer-size))
-      (insert (propertize (cider-repl--banner) 'font-lock-face 'font-lock-comment-face))
-      (when cider-repl-display-help-banner
-        (insert (propertize (cider-repl--help-banner) 'font-lock-face 'font-lock-comment-face))))
+    (insert (propertize (cider-repl--banner) 'font-lock-face 'font-lock-comment-face))
+    (when cider-repl-display-help-banner
+      (insert (propertize (cider-repl--help-banner) 'font-lock-face 'font-lock-comment-face)))
     (goto-char (point-max))
     (cider-repl--mark-output-start)
     (cider-repl--mark-input-start)
@@ -676,8 +685,7 @@ If BOL is non-nil insert at the beginning of line.  Run
 (defun cider-repl--emit-interactive-output (string face)
   "Emit STRING as interactive output using FACE."
   (with-current-buffer (cider-current-repl)
-    (let ((pos (cider-repl--end-of-line-before-input-start))
-          (string (replace-regexp-in-string "\n\\'" "" string)))
+    (let ((pos (cider-repl--end-of-output)))
       (cider-repl--emit-output-at-pos (current-buffer) string face pos t))))
 
 (defun cider-repl-emit-interactive-stdout (string)
@@ -1054,10 +1062,15 @@ See also the related commands `cider-repl-clear-output' and
     (recenter t))
   (run-hooks 'cider-repl-clear-buffer-hook))
 
-(defun cider-repl--end-of-line-before-input-start ()
-  "Return the position of the end of the line preceding the beginning of input."
-  (1- (previous-single-property-change cider-repl-input-start-mark 'field nil
-                                       (1+ (point-min)))))
+(defun cider-repl--end-of-output ()
+  "Return the position at the end of the previous REPL output."
+  (if (eq (get-text-property (1- cider-repl-input-start-mark) 'field)
+          'cider-repl-prompt)
+      ;; if after prompt, return eol before prompt
+      (previous-single-property-change cider-repl-input-start-mark
+                                       'field nil (point-min))
+    ;; else, input mark because there is no prompt (yet)
+    cider-repl-input-start-mark))
 
 (defun cider-repl-clear-output (&optional clear-repl)
   "Delete the output inserted since the last input.
@@ -1070,7 +1083,7 @@ With a prefix argument CLEAR-REPL it will clear the entire REPL buffer instead."
                    (ignore-errors (forward-sexp))
                    (forward-line)
                    (point)))
-          (end (cider-repl--end-of-line-before-input-start)))
+          (end (cider-repl--end-of-output)))
       (when (< start end)
         (let ((inhibit-read-only t))
           (cider-repl--clear-region start end)
@@ -1511,7 +1524,7 @@ constructs."
 (cider-repl-add-shortcut "test-project-with-filters" (lambda () (interactive) (cider-test-run-project-tests 'prompt-for-filters)))
 (cider-repl-add-shortcut "test-report" #'cider-test-show-report)
 (cider-repl-add-shortcut "run" #'cider-run)
-(cider-repl-add-shortcut "conn-info" #'cider-describe-current-connection)
+(cider-repl-add-shortcut "conn-info" #'cider-describe-connection)
 (cider-repl-add-shortcut "hasta la vista" #'cider-quit)
 (cider-repl-add-shortcut "adios" #'cider-quit)
 (cider-repl-add-shortcut "sayonara" #'cider-quit)
@@ -1614,7 +1627,7 @@ constructs."
     (define-key map (kbd "C-c C-z") #'cider-switch-to-last-clojure-buffer)
     (define-key map (kbd "C-c M-o") #'cider-repl-switch-to-other)
     (define-key map (kbd "C-c M-s") #'cider-selector)
-    (define-key map (kbd "C-c M-d") #'cider-describe-current-connection)
+    (define-key map (kbd "C-c M-d") #'cider-describe-connection)
     (define-key map (kbd "C-c C-q") #'cider-quit)
     (define-key map (kbd "C-c M-r") #'cider-restart)
     (define-key map (kbd "C-c M-i") #'cider-inspect)
@@ -1681,7 +1694,7 @@ constructs."
         "--"
         ["Interrupt evaluation" cider-interrupt]
         "--"
-        ["Connection info" cider-describe-current-connection]
+        ["Connection info" cider-describe-connection]
         "--"
         ["Close ancillary buffers" cider-close-ancillary-buffers]
         ["Quit" cider-quit]

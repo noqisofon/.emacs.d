@@ -1,6 +1,6 @@
 ;;; magit-stash.el --- stash support for Magit  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2008-2016  The Magit Project Contributors
+;; Copyright (C) 2008-2018  The Magit Project Contributors
 ;;
 ;; You should have received a copy of the AUTHORS.md file which
 ;; lists all contributors.  If not, see http://magit.vc/authors.
@@ -27,19 +27,71 @@
 
 ;;; Code:
 
+(eval-when-compile
+  (require 'subr-x))
+
 (require 'magit)
+
+(defvar bookmark-make-record-function)
+
+;;; Options
+
+(defgroup magit-stash nil
+  "List stashes and show stash diffs."
+  :group 'magit-modes)
+
+;;;; Diff options
+
+(defcustom magit-stash-sections-hook
+  '(magit-insert-stash-notes
+    magit-insert-stash-worktree
+    magit-insert-stash-index
+    magit-insert-stash-untracked)
+  "Hook run to insert sections into stash diff buffers."
+  :package-version '(magit . "2.1.0")
+  :group 'magit-stash
+  :type 'hook)
+
+;;;; Log options
+
+(defcustom magit-stashes-margin
+  (list (nth 0 magit-log-margin)
+        (nth 1 magit-log-margin)
+        'magit-log-margin-width nil
+        (nth 4 magit-log-margin))
+  "Format of the margin in `magit-stashes-mode' buffers.
+
+The value has the form (INIT STYLE WIDTH AUTHOR AUTHOR-WIDTH).
+
+If INIT is non-nil, then the margin is shown initially.
+STYLE controls how to format the committer date.  It can be one
+  of `age' (to show the age of the commit), `age-abbreviated' (to
+  abbreviate the time unit to a character), or a string (suitable
+  for `format-time-string') to show the actual date.
+WIDTH controls the width of the margin.  This exists for forward
+  compatibility and currently the value should not be changed.
+AUTHOR controls whether the name of the author is also shown by
+  default.
+AUTHOR-WIDTH has to be an integer.  When the name of the author
+  is shown, then this specifies how much space is used to do so."
+  :package-version '(magit . "2.9.0")
+  :group 'magit-stash
+  :group 'magit-margin
+  :type magit-log-margin--custom-type
+  :initialize 'magit-custom-initialize-reset
+  :set-after '(magit-log-margin)
+  :set (apply-partially #'magit-margin-set-variable 'magit-stashes-mode))
 
 ;;; Commands
 
 ;;;###autoload (autoload 'magit-stash-popup "magit-stash" nil t)
 (magit-define-popup magit-stash-popup
   "Popup console for stash commands."
-  'magit-commands
   :man-page "git-stash"
   :switches '((?u "Also save untracked files" "--include-untracked")
               (?a "Also save untracked and ignored files" "--all"))
-  :actions  '((?z "Save"               magit-stash)
-              (?Z "Snapshot"           magit-snapshot)
+  :actions  '((?z "Save"               magit-stash-both)
+              (?Z "Snapshot"           magit-snapshot-both)
               (?p "Pop"                magit-stash-pop)
               (?i "Save index"         magit-stash-index)
               (?I "Snapshot index"     magit-snapshot-index)
@@ -52,12 +104,13 @@
               (?v "Show"               magit-stash-show)
               (?b "Branch"             magit-stash-branch)
               (?k "Drop"               magit-stash-drop) nil
+              (?B "Branch here"        magit-stash-branch-here) nil nil
               (?f "Format patch"       magit-stash-format-patch))
   :default-action 'magit-stash
   :max-action-columns 3)
 
 ;;;###autoload
-(defun magit-stash (message &optional include-untracked)
+(defun magit-stash-both (message &optional include-untracked)
   "Create a stash of the index and working tree.
 Untracked files are included according to popup arguments.
 One prefix argument is equivalent to `--include-untracked'
@@ -112,7 +165,7 @@ while two prefix arguments are equivalent to `--all'."
       input)))
 
 ;;;###autoload
-(defun magit-snapshot (&optional include-untracked)
+(defun magit-snapshot-both (&optional include-untracked)
   "Create a snapshot of the index and working tree.
 Untracked files are included according to popup arguments.
 One prefix argument is equivalent to `--include-untracked'
@@ -148,7 +201,7 @@ while two prefix arguments are equivalent to `--all'."
   "Apply a stash to the working tree.
 Try to preserve the stash index.  If that fails because there
 are staged changes, apply without preserving the stash index."
-  (interactive (list (magit-read-stash "Apply stash" t)))
+  (interactive (list (magit-read-stash "Apply stash")))
   (if (= (magit-call-git "stash" "apply" "--index" stash) 0)
       (magit-refresh)
     (magit-run-git "stash" "apply" stash)))
@@ -158,7 +211,7 @@ are staged changes, apply without preserving the stash index."
 Try to preserve the stash index.  If that fails because there
 are staged changes, apply without preserving the stash index
 and forgo removing the stash."
-  (interactive (list (magit-read-stash "Apply pop" t)))
+  (interactive (list (magit-read-stash "Pop stash")))
   (if (= (magit-call-git "stash" "apply" "--index" stash) 0)
       (magit-stash-drop stash)
     (magit-run-git "stash" "apply" stash)))
@@ -168,16 +221,17 @@ and forgo removing the stash."
   "Remove a stash from the stash list.
 When the region is active offer to drop all contained stashes."
   (interactive (list (--if-let (magit-region-values 'stash)
-                         (magit-confirm t nil "Drop %i stashes" it)
+                         (magit-confirm t nil "Drop %i stashes" nil it)
                        (magit-read-stash "Drop stash"))))
   (dolist (stash (if (listp stash)
                      (nreverse (prog1 stash (setq stash (car stash))))
                    (list stash)))
     (message "Deleted refs/%s (was %s)" stash
              (magit-rev-parse "--short" stash))
+    (magit-call-git "rev-parse" stash)
     (magit-call-git "reflog" "delete" "--updateref" "--rewrite" stash))
-  (-when-let (ref (and (string-match "\\(.+\\)@{[0-9]+}$" stash)
-                       (match-string 1 stash)))
+  (when-let ((ref (and (string-match "\\(.+\\)@{[0-9]+}$" stash)
+                       (match-string 1 stash))))
     (unless (string-match "^refs/" ref)
       (setq ref (concat "refs/" ref)))
     (unless (magit-rev-verify (concat ref "@{0}"))
@@ -187,24 +241,33 @@ When the region is active offer to drop all contained stashes."
 ;;;###autoload
 (defun magit-stash-clear (ref)
   "Remove all stashes saved in REF's reflog by deleting REF."
-  (interactive
-   (let ((ref (or (magit-section-when 'stashes) "refs/stash")))
-     (if (magit-confirm t (format "Drop all stashes in %s" ref))
-         (list ref)
-       (user-error "Abort"))))
+  (interactive (let ((ref (or (magit-section-value-if 'stashes) "refs/stash")))
+                 (magit-confirm t (format "Drop all stashes in %s" ref))
+                 (list ref)))
   (magit-run-git "update-ref" "-d" ref))
 
 ;;;###autoload
 (defun magit-stash-branch (stash branch)
   "Create and checkout a new BRANCH from STASH."
-  (interactive (list (magit-read-stash "Branch stash" t)
+  (interactive (list (magit-read-stash "Branch stash")
                      (magit-read-string-ns "Branch name")))
   (magit-run-git "stash" "branch" branch stash))
 
 ;;;###autoload
+(defun magit-stash-branch-here (stash branch)
+  "Create and checkout a new BRANCH and apply STASH.
+The branch is created using `magit-branch', using the current
+branch or `HEAD' as the string-point."
+  (interactive (list (magit-read-stash "Branch stash")
+                     (magit-read-string-ns "Branch name")))
+  (let ((inhibit-magit-refresh t))
+    (magit-branch-create branch (or (magit-get-current-branch) "HEAD")))
+  (magit-stash-apply stash))
+
+;;;###autoload
 (defun magit-stash-format-patch (stash)
   "Create a patch from STASH"
-  (interactive (list (magit-read-stash "Create patch from stash" t)))
+  (interactive (list (magit-read-stash "Create patch from stash")))
   (with-temp-file (magit-rev-format "0001-%f.patch" stash)
     (magit-git-insert "stash" "show" "-p" stash))
   (magit-refresh))
@@ -214,7 +277,7 @@ When the region is active offer to drop all contained stashes."
 (defun magit-stash-save (message index worktree untracked
                                  &optional refresh keep noerror ref)
   (if (or (and index     (magit-staged-files t))
-          (and worktree  (magit-modified-files t))
+          (and worktree  (magit-unstaged-files t))
           (and untracked (magit-untracked-files (eq untracked 'all))))
       (magit-with-toplevel
         (magit-stash-store message (or ref "refs/stash")
@@ -231,7 +294,8 @@ When the region is active offer to drop all contained stashes."
                 (magit-call-git "checkout" "--" ".")
               (magit-call-git "reset" "--hard" "HEAD"))
             (when untracked
-              (magit-call-git "clean" "-f" (and (eq untracked 'all) "-x")))))
+              (magit-call-git "clean" "--force" "-d"
+                              (and (eq untracked 'all) "-x")))))
         (when refresh
           (magit-refresh)))
     (unless noerror
@@ -251,7 +315,8 @@ When the region is active offer to drop all contained stashes."
         (summary (magit-stash-summary))
         (head "HEAD"))
     (when (and worktree (not index))
-      (setq head (magit-commit-tree "pre-stash index" nil "HEAD")))
+      (setq head (or (magit-commit-tree "pre-stash index" nil "HEAD")
+                     (error "Cannot save the current index state"))))
     (or (setq index (magit-commit-tree (concat "index on " summary) nil head))
         (error "Cannot save the current index state"))
     (and untracked
@@ -295,14 +360,40 @@ When the region is active offer to drop all contained stashes."
 (cl-defun magit-insert-stashes (&optional (ref   "refs/stash")
                                           (heading "Stashes:"))
   "Insert `stashes' section showing reflog for \"refs/stash\".
-If optional REF is non-nil show reflog for that instead.
-If optional HEADING is non-nil use that as section heading
+If optional REF is non-nil, show reflog for that instead.
+If optional HEADING is non-nil, use that as section heading
 instead of \"Stashes:\"."
-  (when (magit-rev-verify ref)
-    (magit-insert-section (stashes ref (not magit-status-expand-stashes))
-      (magit-insert-heading heading)
-      (magit-git-wash (apply-partially 'magit-log-wash-log 'stash)
-        "reflog" "--format=%gd %at %gs" ref))))
+  (let ((verified (magit-rev-verify ref))
+        (autostash
+         (and (magit-rebase-in-progress-p)
+              (magit-file-line
+               (magit-git-dir
+                (-> (if (file-directory-p (magit-git-dir "rebase-merge"))
+                        "rebase-merge/autostash"
+                      "rebase-apply/autostash")))))))
+    (when (or autostash verified)
+      (magit-insert-section (stashes ref)
+        (magit-insert-heading heading)
+        (when autostash
+          (pcase-let ((`(,author ,date ,msg)
+                       (split-string
+                        (car (magit-git-lines
+                              "show" "-q" "--format=%aN%x00%at%x00%s"
+                              autostash))
+                        "\0")))
+            (magit-insert-section (stash autostash)
+              (insert (propertize "AUTOSTASH" 'face 'magit-hash))
+              (insert " " msg "\n")
+              (save-excursion
+                (backward-char)
+                (magit-log-format-margin autostash author date)))))
+        (if verified
+            (magit-git-wash (apply-partially 'magit-log-wash-log 'stash)
+              "reflog" "--format=%gd%x00%aN%x00%at%x00%gs" ref)
+          (insert ?\n)
+          (save-excursion
+            (backward-char)
+            (magit-make-margin-overlay)))))))
 
 ;;; List Stashes
 
@@ -315,7 +406,9 @@ instead of \"Stashes:\"."
 (define-derived-mode magit-stashes-mode magit-reflog-mode "Magit Stashes"
   "Mode for looking at lists of stashes."
   :group 'magit-log
-  (hack-dir-local-variables-non-file-buffer))
+  (hack-dir-local-variables-non-file-buffer)
+  (setq-local bookmark-make-record-function
+              #'magit-bookmark--stashes-make-record))
 
 (cl-defun magit-stashes-refresh-buffer (ref)
   (magit-insert-section (stashesbuf)
@@ -323,18 +416,9 @@ instead of \"Stashes:\"."
                               "Stashes:"
                             (format "Stashes [%s]:" ref)))
     (magit-git-wash (apply-partially 'magit-log-wash-log 'stash)
-      "reflog" "--format=%gd %at %gs" ref)))
+      "reflog" "--format=%gd%x00%aN%x00%at%x00%gs" ref)))
 
 ;;; Show Stash
-
-(defcustom magit-stash-sections-hook
-  '(magit-insert-stash-worktree
-    magit-insert-stash-index
-    magit-insert-stash-untracked)
-  "Hook run to insert sections into stash buffers."
-  :package-version '(magit . "2.1.0")
-  :group 'magit-log
-  :type 'hook)
 
 ;;;###autoload
 (defun magit-stash-show (stash &optional args files)
@@ -342,22 +426,25 @@ instead of \"Stashes:\"."
   (interactive (cons (or (and (not current-prefix-arg)
                               (magit-stash-at-point))
                          (magit-read-stash "Show stash"))
-                     (-let [(args files) (magit-diff-arguments)]
+                     (pcase-let ((`(,args ,files) (magit-diff-arguments)))
                        (list (delete "--stat" args) files))))
   (magit-mode-setup #'magit-stash-mode stash nil args files))
 
 (define-derived-mode magit-stash-mode magit-diff-mode "Magit Stash"
   "Mode for looking at individual stashes."
   :group 'magit-diff
-  (hack-dir-local-variables-non-file-buffer))
+  (hack-dir-local-variables-non-file-buffer)
+  (setq-local bookmark-make-record-function
+              #'magit-bookmark--stash-make-record))
 
 (defun magit-stash-refresh-buffer (stash _const _args _files)
-  (setq header-line-format
-        (concat
-         "\s" (propertize (capitalize stash) 'face 'magit-section-heading)
-         "\s" (magit-rev-format "%s" stash)))
+  (magit-set-header-line-format
+   (concat (propertize (capitalize stash) 'face 'magit-section-heading)
+           " "
+           (magit-rev-format "%s" stash)))
+  (setq magit-buffer-revision-hash (magit-rev-parse stash))
   (magit-insert-section (stash)
-    (run-hooks 'magit-stash-sections-hook)))
+    (magit-run-section-hook 'magit-stash-sections-hook)))
 
 (defun magit-stash-insert-section (commit range message &optional files)
   (magit-insert-section (commit commit)
@@ -366,6 +453,18 @@ instead of \"Stashes:\"."
       "diff" range "-p" "--no-prefix"
       (nth 2 magit-refresh-args)
       "--" (or files (nth 3 magit-refresh-args)))))
+
+(defun magit-insert-stash-notes ()
+  "Insert section showing notes for a stash.
+This shows the notes for stash@{N} but not for the other commits
+that make up the stash."
+  (magit-insert-section section (note)
+    (magit-insert-heading "Notes")
+    (magit-git-insert "notes" "show" (car magit-refresh-args))
+    (if (= (point)
+           (oref section content))
+        (magit-cancel-section)
+      (insert "\n"))))
 
 (defun magit-insert-stash-index ()
   "Insert section showing staged changes of the stash."
@@ -392,9 +491,6 @@ instead of \"Stashes:\"."
                                   (magit-git-items "ls-tree" "-z" "--name-only"
                                                    "-r" "--full-tree" rev)))))
 
-;;; magit-stash.el ends soon
+;;; _
 (provide 'magit-stash)
-;; Local Variables:
-;; indent-tabs-mode: nil
-;; End:
 ;;; magit-stash.el ends here

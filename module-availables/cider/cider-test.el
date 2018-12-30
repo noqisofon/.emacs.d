@@ -417,7 +417,7 @@ With the actual value, the outermost '(not ...)' s-expression is removed."
             (cider-insert (capitalize type) type-face nil " in ")
             (cider-insert var 'font-lock-function-name-face t)
             (when context  (cider-insert context 'font-lock-doc-face t))
-            (when message  (cider-insert message 'font-lock-doc-string-face t))
+            (when message  (cider-insert message 'font-lock-string-face t))
             (when expected
               (insert-label "expected")
               (insert-rect expected)
@@ -622,6 +622,14 @@ This uses the Leiningen convention of appending '-test' to the namespace name."
 (declare-function cider-emit-interactive-eval-output "cider-eval")
 (declare-function cider-emit-interactive-eval-err-output "cider-eval")
 
+(defun cider-test--prompt-for-selectors (message)
+  "Prompt for test selectors with MESSAGE.
+The selectors can be either keywords or strings."
+  (mapcar
+   (lambda (string) (replace-regexp-in-string "^:+" "" string))
+   (split-string
+    (cider-read-from-minibuffer message))))
+
 (defun cider-test-execute (ns &optional tests silent prompt-for-filters)
   "Run tests for NS, which may be a keyword, optionally specifying TESTS.
 This tests a single NS, or multiple namespaces when using keywords `:project',
@@ -636,12 +644,10 @@ The include/exclude selectors will be used to filter the tests before
   (cider-test-clear-highlights)
   (let ((include-selectors
          (when prompt-for-filters
-           (split-string
-            (cider-read-from-minibuffer "Test selectors to include (space separated): "))))
+           (cider-test--prompt-for-selectors "Test selectors to include (space separated): ")))
         (exclude-selectors
          (when prompt-for-filters
-           (split-string
-            (cider-read-from-minibuffer "Test selectors to exclude (space separated): ")))))
+           (cider-test--prompt-for-selectors "Test selectors to exclude (space separated): "))))
     (cider-map-repls :clj-strict
       (lambda (conn)
         (unless silent
