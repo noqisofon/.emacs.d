@@ -25,7 +25,8 @@
 ;; 
 
 ;;; Code:
-(require 'cl)
+(eval-when-compile
+  (require 'cl))
 
 (defun generate-font-string (font-name size)
   "フォント名とフォントサイズを取って Emacs 用のフォント名形式に変換します。"

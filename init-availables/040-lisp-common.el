@@ -25,6 +25,10 @@
 ;; 
 
 ;;; Code:
+
+(setq slime-net-coding-system 'utf8-unix)
+(setq inferior-lisp-program "sbcl")
+
 ;; Lisp の括弧内のインデントです。
 (setq lisp-body-indent 2)
 
