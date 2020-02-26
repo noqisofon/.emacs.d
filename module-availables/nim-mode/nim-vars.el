@@ -23,15 +23,6 @@
   :link '(url-link "http://nim-lang.org/")
   :group 'languages)
 
-(defface nim-tab-face
-  '((((class color) (background dark))
-     (:background "grey22" :foreground "darkgray"))
-    (((class color) (background light))
-     (:background "beige"  :foreground "lightgray"))
-    (t (:inverse-video t)))
-  "Face used to visualize TAB."
-  :group 'nim)
-
 (defface nim-font-lock-export-face
   '((t :weight bold
        :slant italic
@@ -74,7 +65,7 @@ Note that this configuration affects other ‘template’, ‘macro’,
   :group 'nim)
 
 (defcustom nim-smie-indent-stoppers
-  '("proc" "template" "macro" "iterator" "converter" "type")
+  '("proc" "func" "template" "macro" "iterator" "converter" "type")
   "Indentation behavior after empty line.
 You can specify list of string, which you want to stop indenting.
 If it’s nil, it does nothing."
@@ -118,11 +109,17 @@ other tokens like ’:’ or ’=’."
   :type 'hook
   :group 'nim)
 
+(defcustom nim-capf-after-exit-function-hook nil
+  "A hook that is called with an argument.
+The argument is string that has some properties."
+  :type 'hook
+  :group 'nim)
+
 (defcustom nim-pretty-triple-double-quotes
   ;; What character should be default? („…“, “…”, ‘…’, or etc.?)
-  (cons ?“ ?”)
+  (cons ?„ ?”)
   "Change triple double quotes to another quote form.
-This configuration is enabled only in ‘prettify-symbols-mode’."
+This configuration is enabled only in `prettify-symbols-mode`."
   :type 'cons
   :group 'nim)
 
@@ -137,47 +134,115 @@ You don't need to set this if the nim executable is inside your PATH."
   :type '(repeat string)
   :group 'nim)
 
-(defcustom nim-nimsuggest-path (executable-find "nimsuggest")
+(defcustom nimsuggest-path (executable-find "nimsuggest")
   "Path to the nimsuggest binary."
   :type '(choice (const :tag "Path of nimsuggest binary" string)
                  (const :tag "" nil))
   :group 'nim)
 
-(defcustom nim-suggest-options '("--v2")
-  "Options for Nimsuggest.
-Note that ‘--verbosity:0’ and ‘--epc’ are automatically passed nim-mode’s
-epc function."
+(defcustom nimsuggest-options '("--refresh")
+  "Command line options for Nimsuggest.
+‘--epc’ are automatically passed to nim-mode’s EPC (Emacs RPC) function."
   :type '(choice (repeat :tag "List of options" string)
                  (const :tag "" nil))
   :group 'nim)
 
-(defvar nim-suggest-local-options '()
+(defcustom nimsuggest-local-options '()
   "Options for Nimsuggest.
 Please use this variable to set nimsuggest’s options for
-specific directory or buffer.  See also ‘dir-locals-file’.")
+specific directory or buffer.  See also ‘dir-locals-file’."
+  :type '(choice (repeat :tag "List of options" string)
+                 (const :tag "" nil))
+  :group 'nim)
 
-(defvar nim-suggest-ignore-dir-regex
+(defcustom nimsuggest-dirty-directory
+  ;; Even users changed the temp directory name,
+  ;; ‘file-name-as-directory’ ensures suffix directory separator.
+  (mapconcat 'file-name-as-directory
+             `(,temporary-file-directory "emacs-nim-mode") "")
+  "Directory name, which nimsuggest uses temporarily.
+Note that this directory is removed when you exit from Emacs."
+  :type 'directory
+  :group 'nim)
+
+(defcustom nimsuggest-accept-process-delay 150
+  "Number of delay msec to check nimsuggest epc connection is established."
+  :type 'integer
+  :group 'nim)
+
+(defcustom nimsuggest-accept-process-timeout-count 100
+  "Number of count that Emacs can try to check nimsuggest epc connection.
+For example, if you set `nimsuggest-accept-process-delay' to 150 and this value
+was 100, the total time of timeout for nimsuggest epc connection would be about
+15sec."
+  :type 'integer
+  :group 'nim)
+
+(defcustom nimsuggest-show-doc-function 'nimsuggest--show-doc-rst
+  "The style used to display Nim documentation.
+Options available are `nimsuggest--show-doc-rst' and `nimsuggest--show-doc-org'.
+Note `nimsuggest--show-doc-org' enables syntax highlighting and section folding,
+but is experimental."
+  :type 'function
+  :group 'nim)
+
+
+(defvar nimsuggest-eldoc-function 'ignore) ; #208
+(defvar nimsuggest-ignore-dir-regex
   (rx (or "\\" "/") (in "nN") "im" (or "\\" "/") "compiler" (or "\\" "/")))
-(defvar nim-inside-compiler-dir-p nil)
+(defvar nim--inside-compiler-dir-p nil)
+
+
+;; Keymaps
+
+;; Supported basic keybinds:
+;; C means Control-key
+;; M means Meta-key
+;; C-M-a        -- jump to head of proc
+;; C-M-e        -- jump to end of proc
+;; C-M-h        -- mark region of function
 
 (defvar nim-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "M-.") 'nim-goto-sym)
-    (define-key map (kbd "C-c h") 'nim-explain-sym)
+    ;; Allowed keys: C-c with control-letter, or {,}, <, >, :, ;
+    ;; See also: http://www.gnu.org/software/emacs/manual/html_node/elisp/Key-Binding-Conventions.html
     (define-key map (kbd "C-c C-c") 'nim-compile)
-    (define-key map "\C-c<" 'nim-indent-shift-left)
-    (define-key map "\C-c>" 'nim-indent-shift-right)
+    (define-key map (kbd "C-c <") 'nim-indent-shift-left)
+    (define-key map (kbd "C-c >") 'nim-indent-shift-right)
+    ;; TODO:
+    ;; C-c C-j - imemu
+    ;; implement mark-defun
+    ;;
     map))
 
-;; Turn off syntax highlight for big files
-;; FIXME: what number should we set as default?
-(defcustom nim-syntax-disable-limit 400000
-  "Number of buffer size limit to turn off some syntax highlights.
-See also ‘nim-syntax-disable-keywords-list’."
-  :type '(choice (const :tag "unsigned integer" number)
-                 (const :tag "nil" nil))
-  :group 'nim)
+(defvar nimsuggest-doc-mode-map
+  (let ((map (make-sparse-keymap)))
+    (cond
+     ((and (eq nimsuggest-show-doc-function 'nimsuggest--show-doc-org)
+           (fboundp 'org-mode))
+      (set-keymap-parent map (make-composed-keymap org-mode-map))
+      (define-key map (kbd "RET") 'org-open-at-point))
+     (t (set-keymap-parent map (make-composed-keymap special-mode-map))))
+    (define-key map (kbd ">") 'nimsuggest-doc-next)
+    (define-key map (kbd "<") 'nimsuggest-doc-previous)
+    (define-key map (kbd "q") 'quit-window)
+    map)
+  "Nimsuggest doc mode keymap.")
 
+;; xref supported key binds:
+;;   esc-map "." xref-find-definitions
+;;   esc-map "," xref-pop-marker-stack
+;;   esc-map "?" xref-find-references
+;;   ctl-x-4-map "." xref-find-definitions-other-window
+;;   ctl-x-5-map "." xref-find-definitions-other-frame
+;;   TODO: esc-map [?\C-.] xref-find-apropos
+
+;; hs-minor-mode:
+;; C-c @ C-M-h  -- hide/fold functions
+;; C-c @ C-M-s  -- show functions
+;; (You can do same thing by zr and zm keys on evil, a vim emulation plugin)
+
+
 ;; Syntax table
 (defvar nim-mode-syntax-table
   (let ((table (make-syntax-table)))
@@ -214,12 +279,16 @@ See also ‘nim-syntax-disable-keywords-list’."
   "Syntax table for Nim files.")
 
 (defvar nim-dotty-syntax-table
-  (let ((table (make-syntax-table nim-mode-syntax-table)))
+  (let ((table (copy-syntax-table nim-mode-syntax-table)))
     (modify-syntax-entry ?. "w" table)
     (modify-syntax-entry ?_ "w" table)
     table)
   "Dotty syntax table for Nim files.
 It makes underscores and dots word constituent chars.")
+
+(defvar nimscript-mode-syntax-table
+  (copy-syntax-table nim-mode-syntax-table)
+  "Syntax table for NimScript files.")
 
 (defconst nim-comment
   `((single
@@ -243,35 +312,36 @@ It makes underscores and dots word constituent chars.")
         (comment-multi-line . t)
         (comment-use-syntax . nil)))))
 
+
+;; Nim keywords
+
+;; Those keywords are used to syntax highlight as well as
+;; auto-completion. If you want to change those keywords,
+;; please consider about auto-completion; it inserts what
+;; you registered. (snark or camel)
+
 (defconst nim-keywords
   '("addr" "and" "as" "asm" "atomic" "bind" "block" "break" "case"
     "cast" "concept" "const" "continue" "converter" "defer" "discard" "distinct"
     "div" "do" "elif" "else" "end" "enum" "except" "export" "finally" "for"
-    "from" "generic" "if" "import" "in" "include" "interface" "isnot"
+    "func" "from" "generic" "if" "import" "in" "include" "interface" "isnot"
     "iterator" "lambda" "let" "macro" "method" "mixin" "mod" "nil" "not"
     "notin" "object" "of" "or" "out" "proc" "ptr" "raise" "ref" "return"
-    "shared" "shl" "shr" "static" "template" "try" "tuple" "type" "using"
-    "var" "when" "while" "with" "without" "xor" "yield")
+    "shared" "shl" "shr" "static" "template" "try" "tuple" "type" "unsafeAddr"
+    "using" "var" "when" "while" "with" "without" "xor" "yield")
   "Nim keywords.
 The above string is taken from URL
-`http://nim-lang.org/manual.html#identifiers-keywords', for easy
-updating.")
+`https://nim-lang.org/docs/manual.html#lexical-analysis-identifiers-amp-keywords'
+for easy updating.")
 
 (defconst nim-types
   '("int" "int8" "int16" "int32" "int64" "uint" "uint8" "uint16" "uint32"
-    "uint64" "float" "float32" "float64" "bool" "char" "string" "cstring"
-    "pointer" "expr" "stmt" "typedesc" "void" "auto" "any"
-    "untyped" "typed" "range" "array" "openArray" "Ordinal" "seq" "set"
-    "TGenericSeq" "PGenericSeq" "NimStringDesc" "NimString" "byte" "Natural"
-    "Positive" "RootObj" "RootRef" "RootEffect" "TimeEffect" "IOEffect"
-    "ReadIOEffect" "WriteIOEffect" "ExecIOEffect"
-    "TResult" "Endianness" "ByteAddress" "BiggestInt" "BiggestFloat"
+    "uint64" "float" "float32" "float64" "bool" "char" "string"
+    "pointer" "typedesc" "void" "auto" "any" "sink" "lent"
+    "untyped" "typed" "range" "array" "openArray" "varargs" "seq" "set" "byte"
+    ;; c interop types
     "cchar" "cschar" "cshort" "cint" "clong" "clonglong" "cfloat" "cdouble"
-    "clongdouble" "cstringArray" "PFloat32" "PFloat64" "PInt64" "PInt32"
-    "SomeSignedInt" "SomeUnsignedInt" "SomeInteger" "SomeOrdinal" "SomeReal"
-    "SomeNumber" "Slice" "shared" "guarded"
-    "NimNode" "GC_Strategy" "File" "FileHandle" "FileMode"
-    "TaintedString" "PFrame" "TFrame")
+    "cstring" "clongdouble" "cstringArray")
   "Nim types defined in <lib/system.nim>.")
 
 (defconst nim-exceptions
@@ -304,11 +374,8 @@ updating.")
     "is" "of" "shallowCopy" "getAst" "astToStr" "spawn" "procCall")
   "Nim nonoverloadable builtins.")
 
-(defconst nim-builtins
-  '(; length 1 characters are ignored to highlight
-    "+" "-" "=" "<" ">" "@" "&" "*" "/"
-    ">=" "<=" "$" ">=%" ">%" "<%" "<=%" "==" "+%" "-%" "*%" "/%" "%%"
-    "div" "mod" "shr" "shl" "and" "or" "xor"
+(defconst nim-builtin-functions
+  '("div" "mod" "shr" "shl" "and" "or" "xor"
     "not" "notin" "isnot" "cmp" "succ" "pred" "inc"
     "dec" "newseq" "len" "xlen" "incl" "excl" "card" "ord" "chr" "ze" "ze64"
     "toU8" "toU16" "toU32" "min" "max" "setLen" "newString" "add"
@@ -355,10 +422,6 @@ Magic functions.")
   "Builtin functions copied from system.nim.
 But all those functions can not use in NimScript.")
 
-(defconst nim-operators
-  '( "`" "{." ".}" "[" "]" "{" "}" "(" ")" )
-  "Nim standard operators.")
-
 ;; Nimscript
 (defvar nim-nimble-ini-format-regex (rx line-start "[Package]"))
 
@@ -377,22 +440,206 @@ But all those functions can not use in NimScript.")
     "skipExt" "installDirs" "installFiles" "installExt" "bin"
     "requiresData"))
 
-(defvar nimsuggest-check-vervosity "--verbosity:1"
-  "Verbosity for chk option.  Current no meaning though.")
+(defconst nim-pragmas
+  ;; alist of (PRAGMA_NAME . DESCRIPTION)
+  ;; the DESCRIPTION can be either a string or list of string.
+  ;; Use list of string when you want to describe a pragma, but there
+  ;; are more than two ways to use. I.e, pure pragma
+  ;; (though I don't implemented displaying list of string yet)
+  '(("deprecated" .
+     ("deprecate a symbol"
+      "[OLD: NEW, ...] -- deprecate symbols"))
+    ("noSideEffect" .
+     "used to mark a proc/iterator to have no side effects")
+    ("procvar" .
+     "used to mark a proc that it can be passed to a procedural variable.")
+    ("destructor" .
+     "used to mark a proc to act as a type destructor. [duplicated]")
+    ("compileTime" .
+     "used to mark a proc or variable to be used at compile time only")
+    ("noReturn" .
+     "The ``noreturn`` pragma is used to mark a proc that never returns")
+    ("acyclic" .
+     "can be used for object types to mark them as acyclic")
+    ("final" .
+     "can be used for an object type to specify that it cannot be inherited from.")
+    ("pure" .
+     ("object type can be marked to its type field, which is used for runtime type identification is omitted"
+      "enum type can be marked to access of its fields always requires full qualification"))
+    ("shallow" .
+     "affects the semantics of a type: The compiler is allowed to make a shallow copy.")
+    ("asmNoStackFrame" .
+     "A proc can be marked with this pragma to tell the compiler it should not generate a stack frame for the proc.")
+    ("error" .
+     ("used to make the compiler output an error message with the given content."
+      "can be used to annotate a symbol (like an iterator or proc)"))
+    ("fatal" .
+     "In contrast to the error pragma, compilation is guaranteed to be aborted by this pragma.")
+    ("warning" .
+     "is used to make the compiler output a warning message with the given content. Compilation continues after the warning.")
+    ("hint" .
+     "is used to make/disable the compiler output a hint message with the given content.")
+    ("line" .
+     "can be used to affect line information of the annotated statement as seen in stack backtraces")
+    ("linearScanEnd" .
+     "can be used to tell the compiler how to compile a Nim `case`:idx: statement. Syntactically it has to be used as a statement")
+    ("computedGoto".
+     "can be used to tell the compiler how to compile a Nim `case`:idx: in a ``while true`` statement.")
+    ("unroll" .
+     "can be used to tell the compiler that it should unroll a `for`:idx: or `while`:idx: loop for runtime efficiency")
+    ("register".
+     "declares variable as register, giving the compiler a hint that the variable should be placed in a hardware register for faster access.")
+    ("global" .
+     "can be applied to a variable within a proc to instruct the compiler to store it in a global location and initialize it once at program startup.")
+    ("deadCodeElim" .
+     "on -- tells the compiler to activate (or deactivate) dead code elimination for the module the pragma appears in.")
+    ("noForward" .
+     "on|off -- no forward declaration")
+    ("pragma" .
+     "can be used to declare user defined pragmas.")
+    ("experimental" .
+     "enables experimental language features.")
+    ("push" .
+     "are used to override the settings temporarily with pop")
+    ("pop" .
+     "are used to override the settings temporarily with push")
+    ;; implementation specific pragmas
+    ("bitsize" .
+     "is for object field members. It declares the field as a bitfield in C/C++.")
+    ("volatile" .
+     "is for variables only. It declares the variable as `volatile`, whatever that means in C/C++.")
+    ("noDecl" .
+     "tell Nim that it should not generate a declaration for the symbol in the C code.")
+    ("header" .
+     "can be applied to almost any symbol and specifies that it should not be declared and instead the generated code should contain an `#include`")
+    ("incompleteStruct" .
+     "tells the compiler to not use the underlying C ``struct`` in a ``sizeof`` expression")
+    ("compile" .
+     "STRING -- can be used to compile and link a C/C++ source file with the project")
+    ("link" .
+     "STRING -- can be used to link an additional file with the project")
+    ("passC" .
+     ("STRING -- can be used to pass additional parameters to the C compiler like commandline switch `--passC`"
+      "you can use `gorge` from the `system module` to embed parameters from an external command at compile time"))
+    ("passL" .
+     ("STRING -- can be used to pass additional parameters to the linker like commandline switch `--passL`"
+      "you can use `gorge` from the `system module` to embed parameters from an external command at compile time"))
+    ("emit" .
+     "STRING -- can be used to directly affect the output of the compiler's code generator.")
+    ("importcpp" . "")
+    ("importobjc" . "")
+    ("codegenDecl" .
+     "STRING -- can be used to directly influence Nim's code generator.")
+    ("injectStmt" .
+     "can be used to inject a statement before every other statement in the current module.")
+    ("intdefine" . "Reads in a build-time define as an integer")
+    ("strdefine" . "Reads in a build-time define as a string")
+    ;; Compilation option pragmas
+    ("checks" .
+     "on|off -- Turns the code generation for all runtime checks on or off.")
+    ("boundChecks" .
+     "on|off -- Turns the code generation for array bound checks on or off.")
+    ("overflowChecks" .
+     "on|off -- Turns the code generation for over- or underflow checks on or off.")
+    ("nilChecks" .
+     "on|off -- Turns the code generation for nil pointer checks on or off.")
+    ("assertions" .
+     "on|off -- Turns the code generation for assertions on or off.")
+    ("warnings" .
+     "on|off -- Turns the warning messages of the compiler on or off.")
+    ("hints" .
+     "on|off -- Turns the hint messages of the compiler on or off.")
+    ("optimization" .
+     "none|speed|size -- optimize the code for the options")
+    ("callconv" .
+     "cdecl|... -- Specifies the default calling convention for all procedures (and procedure types) that follow.")
+    ;; ffi.txt
+    ("importc" . "STRING")
+    ("exportc" . "STRING")
+    ("extern" . "STRING")
+    ("bycopy" . "can be applied to an object or tuple type and instructs the compiler to pass the type by value to procs")
+    ("byref" . "can be applied to an object or tuple type and instructs the compiler to pass the type by reference (hidden pointer) to procs.")
+    ("varargs" . "tells Nim that the proc can take a variable number of parameters after the last specified parameter.")
+    ("union" . "can be applied to any ``object`` type. It means all of the object's fields are overlaid in memory.")
+    ("packed" . "ensures that the fields of an object are packed back-to-back in memory.")
+    ("unchecked" . "can be used to mark a named array as `unchecked` meaning its bounds are not checked.")
+    ("dynlib" . "STRING -- dynamic library")
+    ;; threads.txt
+    ("thread" . "")
+    ("threadvar" . "")
+    ;; locking.txt
+    ("guard" . "")
+    ("locks" . "[X, ...]")
+    ;; effects.txt
+    ("raises" . "[EXCEPTION, ...] -- can be used to explicitly define which exceptions a proc/iterator/method/converter is allowed to raise.")
+    ("tags" . "[TYPE, ...]")
+    ("effects" . "")
+    ;; types.txt
+    ("nimcall" .
+     "default convention used for a Nim proc. It is the same as `fastcall`, but only for C compilers that support `fastcall`")
+    ("closure" .
+     "default calling convention for a procedural type that lacks any pragma annotations.")
+    ("stdcall" .
+     "convention as specified by Microsoft; the generated C procedure is declared with `__stdcall` keyword.")
+    ("cdecl" .
+     "The cdecl convention means that a procedure shall use the same convention as the C compiler.")
+    ("safecall" . "")
+    ("inline" . "")
+    ("fastcall" . "means different things to different C compilers. One gets whatever the C `__fastcall` means.")
+    ("syscall" . "syscall convention is the same as `__syscall` in C. It is used for interrupts.")
+    ("noconv" . "generated C code will not have any explicit calling convention and thus use the C compiler's default calling convention.")
+    ("inheritable" . "introduce new object roots apart from `system.RootObj`")
+    ;; http://forum.nim-lang.org/t/1100
+    ;; copied Araq's explanation
+    ("gensym" . "generate a fresh temporary variable here for every instantiation to resemble function call semantics")
+    ("dirty" . "everything is resolved in the instantiation context")
+    ("inject" . "the instantiation scope sees this symbol")
+    ("immediate" . "don't resolve types and expand this thing eagerly")
+    ;; http://nim-lang.org/docs/manual.html#statements-and-expressions-var-statement
+    ("noInit" . "avoid implicit initialization for `var`")
+    ("requiresInit" . "avoid implicit initialization for `var` and it does a control flow analysis to prove the variable has been initialized and does not rely on syntactic properties")
+    ;; http://nim-lang.org/docs/manual.html#types-pre-defined-floating-point-types
+    ("NanChecks" . "on|off")
+    ("InfChecks" . "on|off")
+    ("floatChecks" "on|off")
+    ;;; not sure where to look
+    ("noinline" . "")
+    ("benign" . "")
+    ("profiler" . "")
+    ("stackTrace" . "")
+    ("sideEffect" . "")
+    ("compilerRtl" . "")
+    ("merge" . "")
+    ("gcsafe" . "")
+    ("rtl" . "")
+    ;; from 14.0
+    ("this" . "self|ID -- automatic self insertion")
+    ;; seems related to this: http://nim-lang.org/docs/intern.html#how-the-rtl-is-compiled
+    ;; but not sure...
+    ("compilerProc" . "")
+    ("magic" . "compiler intrinsics")
+    )
+  "Alist of (pragma name . description).
+The description is unofficial; PRs are welcome.")
 
+(defconst nim-environment-variables
+  '(; from unittest.nim
+    "NIMTEST_OUTPUT_LVL" "NIMTEST_NO_COLOR" "NIMTEST_ABORT_ON_ERROR"))
+
+
 ;; obsolete
-(defvar nimsuggest-vervosity "--verbosity:0"
-  "This variable will not be needed for latest nimsuggest.
-Please set this value to nil if you have latest nimsuggest,
-which supports ‘chk’ option for EPC.")
+(make-obsolete
+ 'nim-tab-face
+ "The nim-tab-face was obsoleted, use `white-space-mode' instead to highlight tabs."
+ "Oct/20/2017")
 
-(make-obsolete-variable
- 'nimsuggest-vervosity 'nimsuggest-check-vervosity "0.1.0")
-
-;; flycheck-nimsuggest
-(defvar nim-use-flycheck-nimsuggest t
-  "Set nil if you really don’t want to use flycheck-nimsuggest.
-Mainly this variable is debug purpose.")
+;; Added Oct 17, 2017
+(define-obsolete-variable-alias 'nim-nimsuggest-path 'nimsuggest-path "Oct/20/2017")
+(define-obsolete-variable-alias 'nim-dirty-directory 'nimsuggest-dirty-directory "Oct/20/2017")
+(define-obsolete-variable-alias 'nim-suggest-options 'nimsuggest-options "Oct/23/2017")
+(define-obsolete-variable-alias 'nim-suggest-local-options 'nimsuggest-local-options "Oct/23/2017")
+(define-obsolete-variable-alias 'nim-suggest-ignore-dir-regex 'nimsuggest-ignore-dir-regex "Oct/23/2017")
+(define-obsolete-variable-alias 'nim-inside-compiler-dir-p 'nim--inside-compiler-dir-p "Oct/23/2017")
 
 (provide 'nim-vars)
 ;;; nim-vars.el ends here

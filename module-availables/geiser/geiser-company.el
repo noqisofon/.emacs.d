@@ -1,6 +1,6 @@
 ;; geiser-company.el -- integration with company-mode
 
-;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014 Jose Antonio Ortega Ruiz
+;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2016 Jose Antonio Ortega Ruiz
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
@@ -43,14 +43,26 @@
 
 (defun geiser-company--doc-buffer (id)
   (let* ((impl geiser-impl--implementation)
-         (module (geiser-doc-module (geiser-eval--get-module) impl))
+         (module (geiser-eval--get-module))
          (symbol (make-symbol id))
          (ds (geiser-doc--get-docstring symbol module)))
     (if (or (not ds) (not (listp ds)))
-        (message "No documentation available for '%s'" symbol)
+	(progn
+          (message "No documentation available for '%s'" symbol)
+          nil)
       (with-current-buffer (get-buffer-create "*company-documentation*")
         (geiser-doc--render-docstring ds symbol module impl)
         (current-buffer)))))
+
+(defun geiser-company--docstring (id)
+  (let* ((module (geiser-eval--get-module))
+         (symbol (make-symbol id))
+         (ds (geiser-doc--get-docstring symbol module)))
+    (and ds
+         (listp ds)
+         (concat (geiser-autodoc--str* (cdr (assoc "signature" ds)))
+                 "\n\n"
+                 (cdr (assoc "docstring" ds))))))
 
 (defun geiser-company--location (id)
   (ignore-errors
@@ -61,21 +73,22 @@
           (error (geiser-edit-symbol id 'noselect)))))))
 
 (defun geiser-company--prefix-at-point ()
-  (when (and (not (geiser-autodoc--inhibit)) geiser-company--enabled-flag)
-    (if (nth 8 (syntax-ppss)) 'stop
-      (let* ((prefix (and (looking-at-p "\\_>")
-                          (geiser-completion--prefix nil)))
-             (cmps1 (and prefix
-                         (geiser-completion--complete prefix nil)))
-             (cmps2 (and prefix
-                         (geiser-completion--complete prefix t)))
-             (mprefix (and (not cmps1) (not cmps2)
-                           (geiser-completion--prefix t)))
-             (cmps3 (and mprefix (geiser-completion--complete mprefix t)))
-             (cmps (or cmps3 (append cmps1 cmps2)))
-             (prefix (or mprefix prefix)))
-        (setq geiser-company--completions (cons prefix cmps))
-        prefix))))
+  (ignore-errors
+    (when (and (not (geiser-autodoc--inhibit)) geiser-company--enabled-flag)
+      (if (nth 8 (syntax-ppss)) 'stop
+        (let* ((prefix (and (looking-at-p "\\_>")
+                            (geiser-completion--prefix nil)))
+               (cmps1 (and prefix
+                           (geiser-completion--complete prefix nil)))
+               (cmps2 (and prefix
+                           (geiser-completion--complete prefix t)))
+               (mprefix (and (not cmps1) (not cmps2)
+                             (geiser-completion--prefix t)))
+               (cmps3 (and mprefix (geiser-completion--complete mprefix t)))
+               (cmps (or cmps3 (append cmps1 cmps2)))
+               (prefix (or mprefix prefix)))
+          (setq geiser-company--completions (cons prefix cmps))
+          prefix)))))
 
 
 ;;; Activation
@@ -96,6 +109,11 @@
 
 ;;; Company activation
 
+(declare-function company-begin-backend "ext:company")
+(declare-function company-cancel "ext:company")
+(declare-function company-mode "ext:company")
+(defvar company-backends)
+(defvar company-active-map)
 (eval-after-load "company"
   '(progn
      (defun geiser-company-backend (command &optional arg &rest ignored)
@@ -107,6 +125,7 @@
          ('candidates (geiser-company--candidates arg))
          ('meta (geiser-company--doc arg))
          ('doc-buffer (geiser-company--doc-buffer arg))
+         ('quickhelp-string (geiser-company--docstring arg))
          ('location (geiser-company--location arg))
          ('sorted t)))
      (defun geiser-company--setup-company (enable)

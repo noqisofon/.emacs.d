@@ -104,8 +104,10 @@ this variable to t."
   :type 'boolean
   :group 'geiser-chicken)
 
-(defvar geiser-chicken--required-modules
-  (list "chicken-doc" "apropos" "data-structures" "extras" "ports" "posix" "srfi-1" "srfi-13" "srfi-14" "srfi-18" "srfi-69" "tcp" "utils"))
+(geiser-custom--defcustom geiser-chicken-match-limit 20
+  "The limit on the number of matching symbols that Chicken will provide to Geiser."
+  :type 'integer
+  :group 'geiser-chicken)
 
 
 ;;; REPL support:
@@ -125,9 +127,7 @@ This function uses `geiser-chicken-init-file' if it exists."
     ,@n-flags "-include-path" ,(expand-file-name "chicken/" geiser-scheme-dir)
     ,@(apply 'append (mapcar (lambda (p) (list "-include-path" p))
                              geiser-chicken-load-path))
-    ,@(and init-file (file-readable-p init-file) (list init-file))
-    ,@(apply 'append (mapcar (lambda (m) (list "-R" m))
-			     geiser-chicken--required-modules)))))
+    ,@(and init-file (file-readable-p init-file) (list init-file)))))
 
 (defconst geiser-chicken--prompt-regexp "#[^;]*;[^:0-9]*:?[0-9]+> ")
 
@@ -202,7 +202,7 @@ This function uses `geiser-chicken-init-file' if it exists."
 ;;; Trying to ascertain whether a buffer is Chicken Scheme:
 
 (defconst geiser-chicken--guess-re
-  (regexp-opt (append '("csi" "chicken") geiser-chicken-builtin-keywords)))
+  (regexp-opt '("csi" "chicken" "csc")))
 
 (defun geiser-chicken--guess ()
   (save-excursion
@@ -258,21 +258,21 @@ This function uses `geiser-chicken-init-file' if it exists."
 (defconst geiser-chicken-minimum-version "4.8.0.0")
 
 (defun geiser-chicken--version (binary)
-  (shell-command-to-string
-   (format "%s -e %s"
-           (shell-quote-argument binary)
-           (shell-quote-argument "(display (chicken-version))"))))
+  (cadar
+   (seq-filter #'(lambda (l) (string-equal "Version" (car l)))
+	       (mapcar #'split-string 
+		       (process-lines binary "-version")))))
 
 (defun connect-to-chicken ()
   "Start a Chicken REPL connected to a remote process."
   (interactive)
   (geiser-connect 'chicken))
 
-(defun geiser-chicken--compile-or-load (force-load)
+(defun geiser-chicken4--compile-or-load (force-load)
   (let ((target
-         (expand-file-name "chicken/geiser/emacs.so" geiser-scheme-dir))
+         (expand-file-name "chicken/geiser/chicken4.so" geiser-scheme-dir))
         (source
-         (expand-file-name "chicken/geiser/emacs.scm" geiser-scheme-dir))
+         (expand-file-name "chicken/geiser/chicken4.scm" geiser-scheme-dir))
         (force-load (or force-load (eq system-type 'windows-nt)))
         (suppression-prefix
          "(define geiser-stdout (current-output-port))(current-output-port (make-output-port (lambda a #f) (lambda a #f)))")
@@ -290,9 +290,20 @@ This function uses `geiser-chicken-init-file' if it exists."
                      suppression-prefix source target suppression-postfix)))))
       (geiser-eval--send/wait load-sequence))))
 
+(defun geiser-chicken5-load ()
+  (let ((source (expand-file-name "chicken/geiser/chicken5.scm" geiser-scheme-dir))
+	(suppression-prefix
+         "(define geiser-stdout (current-output-port))(current-output-port (make-output-port (lambda a #f) (lambda a #f)))")
+        (suppression-postfix
+         "(current-output-port geiser-stdout)"))
+    (geiser-eval--send/wait (format "%s (load \"%s\") (import geiser) %s" suppression-prefix source suppression-postfix))))
+
 (defun geiser-chicken--startup (remote)
   (compilation-setup t)
-  (geiser-chicken--compile-or-load t))
+  (cond
+   ((version< (geiser-chicken--version geiser-chicken-binary) "5.0.0")
+    (geiser-chicken4--compile-or-load t))
+   (t (geiser-chicken5-load))))
 
 
 ;;; Implementation definition:

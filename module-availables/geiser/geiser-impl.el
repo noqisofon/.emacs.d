@@ -1,6 +1,6 @@
 ;; geiser-impl.el -- generic support for scheme implementations
 
-;; Copyright (C) 2009, 2010, 2012, 2013, 2015 Jose Antonio Ortega Ruiz
+;; Copyright (C) 2009, 2010, 2012, 2013, 2015, 2016 Jose Antonio Ortega Ruiz
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
@@ -28,7 +28,8 @@
   :type 'symbol
   :group 'geiser-implementation)
 
-(geiser-custom--defcustom geiser-active-implementations '(guile racket chicken)
+(geiser-custom--defcustom geiser-active-implementations
+    '(guile racket chicken chez mit chibi)
   "List of active installed Scheme implementations."
   :type '(repeat symbol)
   :group 'geiser-implementation)
@@ -157,7 +158,7 @@ determine its scheme flavour."
              (= 2 (length m))
              (symbolp (car m)))
     (if (functionp (cadr m)) m
-      `(,(car m) (lambda (&rest) ,(cadr m))))))
+      `(,(car m) (lambda (&rest args) ,(cadr m))))))
 
 (defun geiser-impl--define (file name parent methods)
   (let* ((methods (mapcar 'geiser-impl--normalize-method methods))

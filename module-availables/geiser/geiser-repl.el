@@ -1,6 +1,6 @@
 ;;; geiser-repl.el --- Geiser's REPL
 
-;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2015, 2016 Jose Antonio Ortega Ruiz
+;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2015, 2016, 2018 Jose Antonio Ortega Ruiz
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
@@ -26,6 +26,7 @@
 (require 'comint)
 (require 'compile)
 (require 'scheme)
+(require 'font-lock)
 
 
 ;;; Customization:
@@ -61,7 +62,7 @@ REPL buffer."
 
 This is actually the base name: the concrete Scheme
 implementation name gets appended to it."
-  :type 'filename
+  :type 'file
   :group 'geiser-repl)
 
 (geiser-custom--defcustom geiser-repl-history-size comint-input-ring-size
@@ -98,6 +99,16 @@ change that."
   :type 'boolean
   :group 'geiser-repl)
 
+(geiser-custom--defcustom geiser-repl-read-only-output-p t
+  "Whether the REPL's output should be read-only."
+  :type 'boolean
+  :group 'geiser-repl)
+
+(geiser-custom--defcustom geiser-repl-highlight-output-p nil
+  "Whether to syntax highlight REPL output."
+  :type 'boolean
+  :group 'geiser-repl)
+
 (geiser-custom--defcustom geiser-repl-auto-indent-p t
   "Whether newlines for incomplete sexps are autoindented."
   :type 'boolean
@@ -125,6 +136,11 @@ second.
 
 (geiser-custom--defcustom geiser-repl-query-on-exit-p nil
   "Whether to prompt for confirmation on \\[geiser-repl-exit]."
+  :type 'boolean
+  :group 'geiser-repl)
+
+(geiser-custom--defcustom geiser-repl-delete-last-output-on-exit-p nil
+  "Whether to delete partial outputs when the REPL's process exits."
   :type 'boolean
   :group 'geiser-repl)
 
@@ -165,6 +181,9 @@ See also `geiser-debug-auto-display-images-p'."
 
 (geiser-custom--defface repl-input
   'comint-highlight-input geiser-repl "evaluated input highlighting")
+
+(geiser-custom--defface repl-output
+  'font-lock-string-face geiser-repl "REPL output")
 
 (geiser-custom--defface repl-prompt
   'comint-highlight-prompt geiser-repl "REPL prompt")
@@ -218,6 +237,9 @@ module command as a string")
 
 (defvar geiser-repl--repls nil)
 (defvar geiser-repl--closed-repls nil)
+
+(defvar geiser-repl--last-output-start nil)
+(defvar geiser-repl--last-output-end nil)
 
 (make-variable-buffer-local
  (defvar geiser-repl--repl nil))
@@ -303,7 +325,9 @@ module command as a string")
          (marker-position (cdr comint-last-prompt)))
         ((and (boundp 'comint-last-prompt-overlay) comint-last-prompt-overlay)
          (overlay-end comint-last-prompt-overlay))
-        (t (save-excursion (geiser-repl--bol) (+ 1 (point))))))
+        (t (save-excursion
+             (geiser-repl--bol)
+             (min (+ 1 (point)) (point-max))))))
 
 (defun geiser-repl--last-prompt-start ()
   (cond ((and (boundp 'comint-last-prompt) (markerp (car comint-last-prompt)))
@@ -347,15 +371,91 @@ module command as a string")
 (defun geiser-repl--save-remote-data (address)
   (setq geiser-repl--address address)
   (setq header-line-format
-	(cond ((consp address)
-	       (format "Host: %s   Port: %s"
-		       (geiser-repl--host)
-		       (geiser-repl--port)))
-	      ((stringp address)
-	       (format "Socket: %s" address))
-	      (t nil))))
+        (cond ((consp address)
+               (format "Host: %s   Port: %s"
+                       (geiser-repl--host)
+                       (geiser-repl--port)))
+              ((stringp address)
+               (format "Socket: %s" address))
+              (t nil))))
+
+(defun geiser-repl--fontify-output-region (beg end)
+  "Apply highlighting to a REPL output region."
+  (remove-text-properties beg end '(font-lock-face nil face nil))
+  (if geiser-repl-highlight-output-p
+      (geiser-syntax--fontify-syntax-region beg end)
+    (geiser-repl--fontify-plaintext beg end)))
+
+(defun geiser-repl--fontify-plaintext (start end)
+  "Fontify REPL output plainly."
+  (add-text-properties
+   start end
+   '(font-lock-fontified t
+     fontified t
+     font-lock-multiline t
+     font-lock-face geiser-font-lock-repl-output)))
+
+
+(defun geiser-repl--narrow-to-prompt ()
+  "Narrow to active prompt region and return t, otherwise returns nil."
+  (let* ((proc (get-buffer-process (current-buffer)))
+         (pmark (and proc (process-mark proc)))
+         (intxt (when (>= (point) (marker-position pmark))
+                  (save-excursion
+                    (if comint-eol-on-send
+                        (if comint-use-prompt-regexp
+                            (end-of-line)
+                          (goto-char (field-end))))
+                    (buffer-substring pmark (point)))))
+         (prompt-beg (marker-position pmark))
+         (prompt-end (+ prompt-beg (length intxt))))
+    (when (> (length intxt) 0)
+      (narrow-to-region prompt-beg prompt-end)
+      t)))
+
+(defun geiser-repl--wrap-fontify-region-function (beg end &optional loudly)
+  (save-restriction
+    (when (geiser-repl--narrow-to-prompt)
+      (let ((font-lock-dont-widen t))
+        (font-lock-default-fontify-region (point-min) (point-max) nil)))))
+
+(defun geiser-repl--wrap-unfontify-region-function (beg end &optional loudly)
+  (save-restriction
+    (when (geiser-repl--narrow-to-prompt)
+      (let ((font-lock-dont-widen t))
+        (font-lock-default-unfontify-region (point-min) (point-max))))))
 
 (defun geiser-repl--output-filter (txt)
+  (let ((mark-output nil))
+    (save-excursion
+      (goto-char (point-max))
+      (re-search-backward comint-prompt-regexp)
+      ;; move to start of line to prevent accidentally marking a REPL prompt
+      (move-to-column 0)
+      ;; Only mark output which:
+      ;; a) is not on the REPL output line
+      ;; b) has at least one character
+      ;;
+      ;; This makes the magic number for distance 3 -- as the newline
+      ;; after executing expression is also counted. This is due to the point
+      ;; being set before comint-send-input.
+      ;;
+      ;; Restriction a) applies due to our inability to distinguish between
+      ;; output from the REPL, and the REPL prompt output.
+      (let ((distance (- (point) geiser-repl--last-output-start)))
+        (when (> distance 2)
+          (setq mark-output t)
+          (set-marker geiser-repl--last-output-end (point)))))
+    (when mark-output
+      (with-silent-modifications
+        (add-text-properties (1+ geiser-repl--last-output-start)
+                             geiser-repl--last-output-end
+                             `(read-only ,geiser-repl-read-only-output-p))
+        (geiser-repl--fontify-output-region (1+ geiser-repl--last-output-start)
+                                            geiser-repl--last-output-end)
+        (font-lock-ensure geiser-repl--last-output-start
+                          geiser-repl--last-output-end))))
+
   (geiser-con--connection-update-debugging geiser-repl--connection txt)
   (geiser-image--replace-images geiser-repl-inline-images-p
                                 geiser-repl-auto-display-images-p)
@@ -408,10 +508,10 @@ module command as a string")
   (let* ((name (geiser-repl--repl-name impl))
          (buff (current-buffer))
          (args (cond ((consp address) (list address))
-		     ((stringp address) '(()))
-		     (t `(,(geiser-repl--binary impl)
-			  nil
-			  ,@(geiser-repl--arglist impl))))))
+                     ((stringp address) '(()))
+                     (t `(,(geiser-repl--binary impl)
+                          nil
+                          ,@(geiser-repl--arglist impl))))))
     (condition-case err
         (if (and address (stringp address))
             ;; Connect over a Unix-domain socket.
@@ -540,9 +640,10 @@ If SAVE-HISTORY is non-nil, save CMD in the REPL history."
           (geiser-repl--on-quit)
           (push pb geiser-repl--closed-repls)
           (goto-char (point-max))
-          (comint-kill-region comint-last-input-start (point))
+          (when geiser-repl-delete-last-output-on-exit-p
+            (comint-kill-region comint-last-input-start (point)))
           (insert "\nIt's been nice interacting with you!\n")
-          (insert "Press C-c C-z to bring me back.\n" ))))))
+          (insert "Press C-c C-z to bring me back.\n"))))))
 
 (defun geiser-repl--on-kill ()
   (geiser-repl--on-quit)
@@ -602,11 +703,8 @@ If SAVE-HISTORY is non-nil, save CMD in the REPL history."
     (narrow-to-region (geiser-repl--last-prompt-end) (point-max))
     (geiser-syntax--nesting-level)))
 
-(defun geiser-repl--mark-input-bounds (beg end)
-  (add-text-properties beg end '(field t)))
-
-(defun geiser-repl--is-history-input ()
-  (get-text-property (if (eolp) (save-excursion (comint-bol)) (point)) 'field))
+(defun geiser-repl--is-input ()
+  (not (eq (field-at-pos (point)) 'output)))
 
 (defun geiser-repl--grab-input ()
   (let ((pos (comint-bol)))
@@ -614,16 +712,17 @@ If SAVE-HISTORY is non-nil, save CMD in the REPL history."
     (insert (field-string-no-properties pos))))
 
 (defun geiser-repl--send-input ()
+  (set-marker geiser-repl--last-output-start (point-max))
+
   (let* ((proc (get-buffer-process (current-buffer)))
          (pmark (and proc (process-mark proc)))
          (intxt (and pmark (buffer-substring pmark (point))))
-	 (eob (point-max)))
+         (eob (point-max)))
     (when intxt
       (and geiser-repl-forget-old-errors-p
            (not (geiser-repl--is-debugging))
            (compilation-forget-errors))
       (geiser-repl--prepare-send)
-      (geiser-repl--mark-input-bounds pmark eob)
       (comint-send-input)
       (when (string-match "^\\s-*$" intxt)
         (comint-send-string proc (geiser-eval--scheme-str '(:ge no-values)))
@@ -633,9 +732,9 @@ If SAVE-HISTORY is non-nil, save CMD in the REPL history."
   (interactive)
   (let ((p (point)))
     (cond ((< p (geiser-repl--last-prompt-start))
-	   (if (geiser-repl--is-history-input)
-	       (geiser-repl--grab-input)
-	     (ignore-errors (compile-goto-error))))
+           (if (geiser-repl--is-input)
+               (geiser-repl--grab-input)
+             (ignore-errors (compile-goto-error))))
           ((let ((inhibit-field-text-motion t))
              (end-of-line)
              (<= (geiser-repl--nesting-level) 0))
@@ -673,11 +772,13 @@ buffer."
   "Major mode for interacting with an inferior scheme repl process.
 \\{geiser-repl-mode-map}"
   (scheme-mode-variables)
+  (set (make-local-variable 'geiser-repl--last-output-start) (point-marker))
+  (set (make-local-variable 'geiser-repl--last-output-end) (point-marker))
   (set (make-local-variable 'face-remapping-alist)
        '((comint-highlight-prompt geiser-font-lock-repl-prompt)
          (comint-highlight-input geiser-font-lock-repl-input)))
   (set (make-local-variable 'mode-line-process) nil)
-  (set (make-local-variable 'comint-use-prompt-regexp) t)
+  (set (make-local-variable 'comint-use-prompt-regexp) nil)
   (set (make-local-variable 'comint-prompt-read-only)
        geiser-repl-read-only-prompt-p)
   (setq comint-process-echoes nil)
@@ -689,6 +790,12 @@ buffer."
   (geiser-completion--setup t)
   (setq geiser-smart-tab-mode-string "")
   (geiser-smart-tab-mode t)
+
+  (setq-local font-lock-fontify-region-function
+              #'geiser-repl--wrap-fontify-region-function)
+  (setq-local font-lock-unfontify-region-function
+              #'geiser-repl--wrap-unfontify-region-function)
+
   ;; enabling compilation-shell-minor-mode without the annoying highlighter
   (compilation-setup t))
 
@@ -774,7 +881,7 @@ buffer."
 over a Unix-domain socket."
   (interactive
    (list (geiser-repl--get-impl "Connect to Scheme implementation: ")
-         (read-file-name "Socket file name: ")))
+         (expand-file-name (read-file-name "Socket file name: "))))
   (let ((buffer (current-buffer)))
     (geiser-repl--start-repl impl socket)
     (geiser-repl--maybe-remember-scm-buffer buffer)))

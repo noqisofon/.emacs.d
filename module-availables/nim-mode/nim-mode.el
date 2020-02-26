@@ -4,11 +4,11 @@
 ;; Description: A major mode for the Nim programming language
 ;; Author: Simon Hafner
 ;; Maintainer: Simon Hafner <hafnersimon@gmail.com>
-;; Version: 0.2.0
+;; Version: 0.4.2
 ;; Keywords: nim languages
 ;; Compatibility: GNU Emacs 24.4
-;; Package-Requires: ((emacs "24.4") (epc "0.1.1") (let-alist "1.0.1") (commenter "0.5.1") (flycheck "28") (company "0.8.12"))
-;;
+;; Package-Requires: ((emacs "24.4") (epc "0.1.1") (let-alist "1.0.1") (commenter "0.5.1") (flycheck-nimsuggest "0.8.1"))
+
 ;; Taken over from James H. Fisher <jameshfisher@gmail.com>
 ;;
 ;; This program is free software; you can redistribute it and/or modify
@@ -26,21 +26,53 @@
 ;; the Free Software Foundation, Inc., 51 Franklin Street, Fifth
 ;; Floor, Boston, MA 02110-1301, USA.
 ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Abstraction:
+;; Large parts of this code is shamelessly stolen from python.el and
+;; adapted to Nim.
+;;
+;; This package provide a major-mode future (syntax highlight and
+;; indentation) and some necessity futures (jump-to-definition,
+;; linting, el-doc) if you install nimsuggest.  See below for the detail.
 ;;
 ;;; Commentary:
+;; ## TL;DR
+
+;; For regular Emacs users, all you need is below configuration in your
+;; dot Emacs after you installed nim-mode from MELPA and nimsuggest
+;; which you can make by `./koch tools` or `./koch nimsuggest`command in
+;; the Nim repository (or check the official document on Nim website if
+;; this information was outdated):
 ;;
-;; Large parts of this code is shamelessly stolen from python.el and
-;; adapted to Nim
+;; Activate nimsuggest dedicated mode on `nim-mode':
 ;;
-;; Todo:
+;;   (add-hook 'nim-mode-hook 'nimsuggest-mode)
 ;;
-;; -- Treat parameter lists separately
-;; -- Treat pragmas inside "{." and ".}" separately
+;; Below configs are can be optional
 ;;
+;; The `nimsuggest-path' will be set the value of (executable-find "nimsuggest")
+;; automatically.
+;;
+;;   (setq nimsuggest-path "path/to/nimsuggest")
+;;
+;; You may need to install below packages if you haven't installed yet.
+;;
+;; -- Auto completion --
+;; You can omit if you configured company-mode on 'prog-mode-hook
+;;   (add-hook 'nimsuggest-mode-hook 'company-mode)  ; auto complete package
+;;
+;; -- Auto lint --
+;; You can omit if you configured flycheck-mode on 'prog-mode-hook
+;;
+;;   (add-hook 'nimsuggest-mode-hook 'flycheck-mode) ; auto linter package
+;;
+;; See more information at https://github.com/nim-lang/nim-mode
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;;; Code:
+
+;; To update some autoloads on local for `el-get'
+;; (el-get-update-autoloads 'nim-mode)
 
 (require 'cl-lib)
 
@@ -53,8 +85,6 @@
 (require 'nim-smie)
 (require 'paren) ; for ‘show-paren-data-function’
 (require 'nim-fill)
-(require 'nim-compile)
-(require 'nim-suggest)
 (require 'commenter)
 
 (put 'nim-mode 'font-lock-defaults '(nim-font-lock-keywords nil t))
@@ -71,13 +101,14 @@
   "Common configuration for ‘nim-mode’ and ‘nimscript-mode’."
   (run-hooks 'nim-common-init-hook)
 
-  (setq-local nim-inside-compiler-dir-p
+  (setq-local nim--inside-compiler-dir-p
               (when (and buffer-file-name
                          (string-match
-                          nim-suggest-ignore-dir-regex buffer-file-name))
+                          nimsuggest-ignore-dir-regex buffer-file-name))
                 t))
 
   ;; Comment
+  (setq-local comment-style 'indent)
   (setq-local comment-use-syntax t)
   ;; Those start and end comment variables are for initial value.
   (setq-local comment-start "#")
@@ -85,6 +116,13 @@
   ;; actual comment values are defined here
   (setq-local commenter-config nim-comment)
   (commenter-setup)
+
+  ;; ElDoc
+  ;; See `eldoc-documentation-function'. Don't move this function out
+  ;; side of major-mode function; it may cause weird eldoc behavior
+  ;; (`eldoc-documentation-function' was set, but eldoc doesn't start
+  ;; only first time you open a nim file)
+  (nim-eldoc-on)
 
   ;; SMIE
   (smie-setup nim-mode-smie-grammar 'nim-mode-smie-rules
@@ -132,10 +170,16 @@
 
   ;; Because indentation is not redundant, we cannot safely reindent code.
   (setq-local electric-indent-inhibit t)
-  (setq-local electric-indent-chars '(?: ?\s))
+
+  ;; Use user configuration of `electric-indent-chars' mainly to use C-m/Return
+  ;; key as `newline-and-indent'. If you prefer Emacs' old behavior regarding
+  ;; C-m and C-j, you can configure like this:
+  ;;
+  ;;   (setq electric-indent-chars '())
+  ;;   (global-set-key (kbd "C-j") #'newline-and-indent)
+  (setq-local electric-indent-chars (append electric-indent-chars '(?: ?\s)))
   (when electric-indent-mode
-    (add-function :around
-                  (local 'delete-backward-char) 'nim-electric-backspace)))
+    (define-key nim-mode-map [remap delete-backward-char] 'nim-electric-backspace)))
 
 ;; add ‘nim-indent-function’ to electric-indent’s
 ;; blocklist. ‘electric-indent-inhibit’ isn’t enough for old emacs.
@@ -154,9 +198,49 @@
   ;; Font lock
   (nim--set-font-lock-keywords 'nim-mode))
 
+;;; NimScript
+;;  -- https://nim-lang.org/docs/nims.html
+;;  -- https://github.com/nim-lang/Nim/wiki/Using-nimscript-for-configuration
+
+;;;###autoload
+(define-derived-mode nimscript-mode prog-mode "NimScript"
+  "A major-mode for NimScript files.
+This major-mode is activated when you enter *.nims and *.nimble
+suffixed files, but if it’s .nimble file, also another logic is
+applied. See also ‘nimscript-mode-maybe’."
+  :group 'nim
+
+  (nim--common-init)
+
+  (nim--set-font-lock-keywords 'nimscript-mode))
+
+;;;###autoload
+(defun nimscript-mode-maybe ()
+  "Most likely turn on ‘nimscript-mode’.
+In *.nimble files, if the first line sentence matches
+‘nim-nimble-ini-format-regex’, this function activates ‘conf-mode’
+instead.  The default regex’s matching word is [Package]."
+  (interactive)
+  (if (not (buffer-file-name))
+      (nimscript-mode)
+    (let ((extension (file-name-extension (buffer-file-name))))
+      (cond ((equal "nims" extension)
+             (nimscript-mode))
+            ((equal "nimble" extension)
+             (save-excursion
+               (goto-char (point-min))
+               (if (looking-at-p nim-nimble-ini-format-regex)
+                   (conf-mode)
+                 (nimscript-mode))))))))
+
+;;; `auto-mode-alist'
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.nim\\'" . nim-mode))
+;;;###autoload
+(add-to-list 'auto-mode-alist '("\\.nim\\(ble\\|s\\)\\'" . nimscript-mode-maybe))
 
+
+;;; Font locks
 (defun nim--set-font-lock-keywords (mode &optional arg)
   (let ((keywords
          (cl-case mode
@@ -205,7 +289,7 @@ Note that without above values will be treated as t."
                nim-font-lock-keywords-2
                nim-font-lock-keywords-3))))
 
-;;;;;;;;;;;;;;
+
 ;; Electric
 ;; (https://www.emacswiki.org/emacs/Electricity)
 
@@ -278,12 +362,12 @@ the line will be re-indented automatically if needed."
       (indent-line-to next))))
 
 (defun nim-electric-backspace (&rest args)
-  "Delete preceding char or levels of indentation."
+  "Delete preceding char or levels of indentation.
+The ARGS are passed to original ‘delete-backward-char’ function."
   (interactive "p\nP")
   (let (back)
     (if (and electric-indent-mode
              (eq (current-indentation) (current-column))
-             (memq last-command-event '(? ?)) ; C-h and backspace
              (called-interactively-p 'interactive)
              (not (nim-syntax-comment-or-string-p))
              (not (bolp))
@@ -293,6 +377,94 @@ the line will be re-indented automatically if needed."
         (indent-line-to back)
       (apply 'delete-backward-char args))))
 
+;;; ELDOC
+
+;; Eldoc supports for Nim's static information like pragma.
+;; When you activate nimsuggest-mode, this also support's
+;; nimsuggest's eldoc information.
+
+(defvar nim-eldoc--skip-regex
+  (rx (or (group symbol-start
+                 (or "if" "when" "elif" "while"
+                     ;; for tuple assignment
+                     "var" "let" "const")
+                 symbol-end (0+ " "))
+          (group line-start (0+ " ")))))
+
+(defun nim-eldoc-on-p()
+  "Return non-nil if eldoc mode is activated."
+  (or (bound-and-true-p eldoc-mode)
+      ;; This mode was added at Emacs 25
+      (bound-and-true-p global-eldoc-mode)))
+
+(defun nim-eldoc--try-p ()
+  "Return non-nil if current position can check eldoc."
+  (and (nim-eldoc-on-p)
+       (not (nim-line-comment-p))
+       (not (member (char-after (point))
+                    ;; not sure this works on windows
+                    '(?\s ?\n)))))
+
+;;;###autoload
+(defun nim-eldoc-function ()
+  "Return a doc string appropriate for the current context, or nil."
+  (interactive)
+  (when (nim-eldoc--try-p)
+    (if (nim-inside-pragma-p)
+        (nim-eldoc--pragma-at-point)
+      (funcall nimsuggest-eldoc-function))))
+
+;;;###autoload
+(defun nim-eldoc-on ()
+  "This may or may not work.  Maybe this configuration has to set on.
+Major-mode configuration according to the document."
+  (interactive)
+  (add-function :before-until (local 'eldoc-documentation-function)
+                'nim-eldoc-function))
+
+(defun nim-eldoc-off ()
+  "Turn off nim eldoc mode."
+  (interactive)
+  (remove-function (local 'eldoc-documentation-function) 'nim-eldoc-function))
+
+;;;###autoload
+(defun nim-eldoc-setup (&rest _args)
+  "This function may not work.
+I tried to configure this stuff to be user definable, but currently failing.
+The eldoc support should be turned on automatically, so please
+use `nim-eldoc-off' manually if you don't like it."
+  ;; TODO: describe not to support for manual configuration?
+  ;; see also `eldoc-documentation-function'. It implies that the
+  ;; configure should be done by major-mode side, so might be
+  ;; impossible to configure by hook?
+  (if (nim-eldoc-on-p) (nim-eldoc-on) (nim-eldoc-off)))
+
+(defun nim-eldoc--get-pragma (pragma)
+  "Get the PRAGMA's doc string."
+  (let ((data (assoc-default pragma nim-pragmas)))
+    (cl-typecase data
+      (string data)
+      ;; FIXME: more better operation
+      (list (car data)))))
+
+(defun nim-eldoc--pragma-at-point ()
+  "Return string of pragma's description at point."
+  (let* ((thing (thing-at-point 'symbol))
+         (desc (nim-eldoc--get-pragma thing)))
+    (when (and desc (string< "" desc))
+      (format "%s: %s" thing (nim-eldoc--get-pragma thing)))))
+
+(defun nim-eldoc-inside-paren-p ()
+  "Return non-nil if it's inside pragma."
+  (save-excursion
+    (let ((ppss (syntax-ppss)))
+      (and (< 0 (nth 0 ppss))
+           (eq ?\( (char-after (nth 1 ppss)))))))
+
+;; backward compatibility
+(defalias 'nim-eldoc-setup 'ignore)
+
+
 ;; hideshow.el (hs-minor-mode)
 (defun nim-hideshow-forward-sexp-function (_arg)
   "Nim specific `forward-sexp' function for `hs-minor-mode'.

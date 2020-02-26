@@ -96,14 +96,15 @@ This function uses `geiser-chez-init-file' if it exists."
 (defconst geiser-chez-minimum-version "9.4")
 
 (defun geiser-chez--version (binary)
-  (shell-command-to-string
-   (format "%s --version"
-           (shell-quote-argument binary))))
+  (car (process-lines binary "--version")))
 
 (defun geiser-chez--startup (remote)
   (let ((geiser-log-verbose-p t))
     (compilation-setup t)
     (geiser-eval--send/wait "(begin (import (geiser)) (write `((result ) (output . \"\"))) (newline))")))
+
+(defun geiser-chez--display-error (module key msg)
+  (and key (message msg) nil))
 
 ;;; Implementation definition:
 
@@ -122,7 +123,7 @@ This function uses `geiser-chez-init-file' if it exists."
   (exit-command geiser-chez--exit-command)
   (import-command geiser-chez--import-command)
   (find-symbol-begin geiser-chez--symbol-begin)
-  ;; (display-error geiser-chez--display-error)
+  (display-error geiser-chez--display-error)
   ;; (external-help geiser-chez--manual-look-up)
   ;; (check-buffer geiser-chez--guess)
   ;; (keywords geiser-chez--keywords)

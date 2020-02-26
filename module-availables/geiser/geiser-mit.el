@@ -16,7 +16,7 @@
 
 (require 'compile)
 (require 'info-look)
-(require 'subr-x)
+
 
 (eval-when-compile (require 'cl))
 
@@ -36,7 +36,7 @@
 (geiser-custom--defcustom geiser-mit-source-directory
     ""
   "The path to the MIT/GNU Scheme sources' src/ directory."
-  :type 'filename
+  :type 'directory
   :group 'geiser-mit)
 
 
@@ -120,17 +120,19 @@ This function uses `geiser-mit-init-file' if it exists."
 (defconst geiser-mit-minimum-version "9.1.1")
 
 (defun geiser-mit--version (binary)
-  (shell-command-to-string
-   (format "%s --quiet --no-init-file --eval %s"
-           (shell-quote-argument binary)
-           "'(begin (display (get-subsystem-version-string \"Release\")) (%exit 0))'")))
+  (car (process-lines binary
+                      "--quiet"
+                      "--no-init-file"
+                      "--eval"
+                      "(begin (display (get-subsystem-version-string \"Release\"))
+                              (%exit 0))")))
 
 (defconst geiser-mit--path-rx "^In \\([^:\n ]+\\):\n")
 (defun geiser-mit--startup (remote)
   (let ((geiser-log-verbose-p t))
     (compilation-setup t)
     (when (and (stringp geiser-mit-source-directory)
-               (not (string-empty-p geiser-mit-source-directory)))
+               (not (string= geiser-mit-source-directory "")))
       (geiser-eval--send/wait (format "(geiser:set-mit-scheme-source-directory %S)" geiser-mit-source-directory)))))
 
 ;;; Implementation definition:

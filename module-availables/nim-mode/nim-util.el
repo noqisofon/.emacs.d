@@ -4,6 +4,12 @@
 ;;; Code:
 (require 'nim-syntax)
 
+(cl-defun nim-log (&rest msg-and-rest)
+  (apply `((lambda () (lwarn 'nim :debug ,@msg-and-rest)))))
+
+(cl-defun nim-log-err (&rest msg-and-rest)
+  (apply `((lambda () (lwarn 'nim :error ,@msg-and-rest)))))
+
 (defun nim-util-goto-line (line-number)
   "Move point to LINE-NUMBER."
   (goto-char (point-min))

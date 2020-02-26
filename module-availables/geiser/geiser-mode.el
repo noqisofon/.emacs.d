@@ -1,6 +1,6 @@
 ;; geiser-mode.el -- minor mode for scheme buffers
 
-;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016 Jose Antonio Ortega Ruiz
+;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017 Jose Antonio Ortega Ruiz
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
@@ -61,6 +61,29 @@ active when `geiser-mode' is activated in a buffer."
   "Whether `geiser-smart-tab-mode' gets enabled by default in Scheme buffers."
   :group 'geiser-mode
   :type 'boolean)
+
+(geiser-custom--defcustom geiser-mode-eval-last-sexp-to-buffer nil
+  "Whether `eval-last-sexp' prints results to buffer"
+  :group 'geiser-mode
+  :type 'boolean)
+
+(geiser-custom--defcustom geiser-mode-eval-to-buffer-prefix " "
+  "When `geiser-mode-eval-last-sexp-to-buffer', the prefix string
+which will be prepended to results."
+  :group 'geiser-mode
+  :type 'string)
+
+(geiser-custom--defcustom geiser-mode-eval-to-buffer-transformer nil
+  "Transformer for results inserted in debug buffer.
+
+When `geiser-mode-eval-last-sexp-to-buffer', the result will be
+transformed using this function default behavior is just prepend
+with `geiser-mode-eval-to-buffer-prefix' takes two arguments:
+`msg' and `is-error?'  `msg' is the result string going to be
+transformed, `is-error?' is a boolean indicating whether the
+result is an error msg."
+  :group 'geiser-mode
+  :type 'function)
 
 
 
@@ -132,17 +155,37 @@ With prefix, goes to the REPL buffer afterwards (as
 (defun geiser-eval-last-sexp (print-to-buffer-p)
   "Eval the previous sexp in the Geiser REPL.
 
-With a prefix, print the result of the evaluation to the buffer."
+With a prefix, revert the effect of `geiser-mode-eval-last-sexp-to-buffer' "
   (interactive "P")
-  (let* ((ret (geiser-eval-region (save-excursion (backward-sexp) (point))
-                                  (point)
-                                  nil
-                                  t
-                                  print-to-buffer-p))
-         (str (geiser-eval--retort-result-str ret (when print-to-buffer-p ""))))
-    (when (and print-to-buffer-p (not (string= "" str)))
-      (push-mark)
-      (insert str))))
+  (let* (bosexp
+         (eosexp (save-excursion (backward-sexp)
+                                 (setq bosexp (point))
+                                 (forward-sexp)
+                                 (point)))
+	 (ret-transformer (or geiser-mode-eval-to-buffer-transformer
+			      (lambda (msg is-error?)
+				(format "%s%s%s"
+                                        geiser-mode-eval-to-buffer-prefix
+					(if is-error? "ERROR" "")
+                                        msg))))
+         (ret (save-excursion
+                (geiser-eval-region bosexp ;beginning of sexp
+                                    eosexp ;end of sexp
+                                    nil
+                                    t
+                                    print-to-buffer-p)))
+	 (err (geiser-eval--retort-error ret))
+	 (will-eval-to-buffer (if print-to-buffer-p
+				  (not geiser-mode-eval-last-sexp-to-buffer)
+				geiser-mode-eval-last-sexp-to-buffer))
+	 (str (geiser-eval--retort-result-str ret
+                                              (when will-eval-to-buffer ""))))
+    (cond  ((not will-eval-to-buffer) str)
+	   (err (insert (funcall ret-transformer
+                                 (geiser-eval--error-str err) t)))
+	   ((string= "" str))
+	   (t (push-mark)
+              (insert (funcall ret-transformer str nil))))))
 
 (defun geiser-compile-definition (&optional and-go)
   "Compile the current definition in the Geiser REPL.
@@ -195,12 +238,13 @@ With prefix, recursively macro-expand the resulting expression."
 (defun geiser-set-scheme ()
   "Associates current buffer with a given Scheme implementation."
   (interactive)
-  (geiser-syntax--remove-kws)
-  (let ((impl (geiser-impl--read-impl)))
-    (geiser-impl--set-buffer-implementation impl)
-    (geiser-repl--set-up-repl impl)
-    (geiser-syntax--add-kws)
-    (geiser-syntax--fontify)))
+  (save-excursion
+    (geiser-syntax--remove-kws)
+    (let ((impl (geiser-impl--read-impl)))
+      (geiser-impl--set-buffer-implementation impl)
+      (geiser-repl--set-up-repl impl)
+      (geiser-syntax--add-kws)
+      (geiser-syntax--fontify))))
 
 (defun geiser-mode-switch-to-repl (arg)
   "Switches to Geiser REPL.
