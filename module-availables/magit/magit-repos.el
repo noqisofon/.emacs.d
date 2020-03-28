@@ -1,6 +1,6 @@
 ;;; magit-repos.el --- listing repositories  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2010-2018  The Magit Project Contributors
+;; Copyright (C) 2010-2020  The Magit Project Contributors
 ;;
 ;; You should have received a copy of the AUTHORS.md file which
 ;; lists all contributors.  If not, see http://magit.vc/authors.
@@ -34,7 +34,7 @@
 
 (require 'magit-core)
 
-(declare-function magit-status-internal "magit-status" (directory))
+(declare-function magit-status-setup-buffer "magit-status" (directory))
 
 (defvar x-stretch-cursor)
 
@@ -51,7 +51,7 @@ repositories.  If it is 0, then only add DIRECTORY itself.
 This option controls which repositories are being listed by
 `magit-list-repositories'.  It also affects `magit-status'
 \(which see) in potentially surprising ways."
-  :package-version '(magit . "2.91.0")
+  :package-version '(magit . "3.0.0")
   :group 'magit-essentials
   :type '(repeat (cons directory (integer :tag "Depth"))))
 
@@ -103,6 +103,21 @@ actually support that yet."
                                                (symbol))
                                        (sexp   :tag "Value"))))))
 
+(defcustom magit-repolist-column-flag-alist
+  '((magit-untracked-files . "N")
+    (magit-unstaged-files . "U")
+    (magit-staged-files . "S"))
+  "Association list of predicates and flags for `magit-repolist-column-flag'.
+
+Each element is of the form (FUNCTION . FLAG).  Each FUNCTION is
+called with no arguments, with `default-directory' bound to the
+top level of a repository working tree, until one of them returns
+a non-nil value.  FLAG corresponding to that function is returned
+as the value of `magit-repolist-column-flag'."
+  :package-version '(magit . "3.0.0")
+  :group 'magit-repolist
+  :type '(alist :key-type (function :tag "Predicate Function")
+                :value-type (string :tag "Flag")))
 
 ;;; List Repositories
 ;;;; Command
@@ -127,8 +142,7 @@ repositories are displayed."
 (defvar magit-repolist-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map tabulated-list-mode-map)
-    (define-key map (if (featurep 'jkl) [return] (kbd "C-m"))
-      'magit-repolist-status)
+    (define-key map (kbd "C-m") 'magit-repolist-status)
     map)
   "Local keymap for Magit-Repolist mode buffers.")
 
@@ -136,12 +150,12 @@ repositories are displayed."
   "Show the status for the repository at point."
   (interactive)
   (--if-let (tabulated-list-get-id)
-      (magit-status-internal (expand-file-name it))
+      (magit-status-setup-buffer (expand-file-name it))
     (user-error "There is no repository at point")))
 
 (define-derived-mode magit-repolist-mode tabulated-list-mode "Repos"
   "Major mode for browsing a list of Git repositories."
-  (setq x-stretch-cursor        nil)
+  (setq-local x-stretch-cursor  nil)
   (setq tabulated-list-padding  0)
   (setq tabulated-list-sort-key (cons "Path" nil))
   (setq tabulated-list-format
@@ -187,7 +201,7 @@ Usually this is just its basename."
                                       "--date=format:%Y%m%d.%H%M"))))
     (save-match-data
       (when (string-match "-dirty\\'" v)
-        (put-text-property (1+ (match-beginning 0)) (length v) 'face 'error v))
+        (magit--put-face (1+ (match-beginning 0)) (length v) 'error v))
       (if (and v (string-match "\\`[0-9]" v))
           (concat " " v)
         v))))
@@ -200,50 +214,55 @@ Usually this is just its basename."
   "Insert the upstream branch of the current branch."
   (magit-get-upstream-branch))
 
-(defun magit-repolist-column-dirty (_id)
-  "Insert a letter if there are uncommitted changes.
+(defun magit-repolist-column-flag (_id)
+  "Insert a flag as specified by `magit-repolist-column-flag-alist'.
 
-Show N if there is at least one untracked file.
-Show U if there is at least one unstaged file.
-Show S if there is at least one staged file.
+By default this indicates whether there are uncommitted changes.
+- N if there is at least one untracked file.
+- U if there is at least one unstaged file.
+- S if there is at least one staged file.
 Only one letter is shown, the first that applies."
-  (cond ((magit-untracked-files) "N")
-        ((magit-unstaged-files)  "U")
-        ((magit-staged-files)    "S")))
+  (-some (pcase-lambda (`(,fun . ,flag))
+           (and (funcall fun) flag))
+         magit-repolist-column-flag-alist))
 
 (defun magit-repolist-column-unpulled-from-upstream (_id)
   "Insert number of upstream commits not in the current branch."
-  (--when-let (magit-get-upstream-branch nil t)
+  (--when-let (magit-get-upstream-branch)
     (let ((n (cadr (magit-rev-diff-count "HEAD" it))))
-      (propertize (number-to-string n) 'face (if (> n 0) 'bold 'shadow)))))
+      (magit--propertize-face
+       (number-to-string n) (if (> n 0) 'bold 'shadow)))))
 
 (defun magit-repolist-column-unpulled-from-pushremote (_id)
   "Insert number of commits in the push branch but not the current branch."
   (--when-let (magit-get-push-branch nil t)
     (let ((n (cadr (magit-rev-diff-count "HEAD" it))))
-      (propertize (number-to-string n) 'face (if (> n 0) 'bold 'shadow)))))
+      (magit--propertize-face
+       (number-to-string n) (if (> n 0) 'bold 'shadow)))))
 
 (defun magit-repolist-column-unpushed-to-upstream (_id)
   "Insert number of commits in the current branch but not its upstream."
-  (--when-let (magit-get-upstream-branch nil t)
+  (--when-let (magit-get-upstream-branch)
     (let ((n (car (magit-rev-diff-count "HEAD" it))))
-      (propertize (number-to-string n) 'face (if (> n 0) 'bold 'shadow)))))
+      (magit--propertize-face
+       (number-to-string n) (if (> n 0) 'bold 'shadow)))))
 
 (defun magit-repolist-column-unpushed-to-pushremote (_id)
   "Insert number of commits in the current branch but not its push branch."
   (--when-let (magit-get-push-branch nil t)
     (let ((n (car (magit-rev-diff-count "HEAD" it))))
-      (propertize (number-to-string n) 'face (if (> n 0) 'bold 'shadow)))))
+      (magit--propertize-face
+       (number-to-string n) (if (> n 0) 'bold 'shadow)))))
 
 (defun magit-repolist-column-branches (_id)
   "Insert number of branches."
   (let ((n (length (magit-list-local-branches))))
-    (propertize (number-to-string n) 'face (if (> n 1) 'bold 'shadow))))
+    (magit--propertize-face (number-to-string n) (if (> n 1) 'bold 'shadow))))
 
 (defun magit-repolist-column-stashes (_id)
   "Insert number of stashes."
   (let ((n (length (magit-list-stashes))))
-    (propertize (number-to-string n) 'face (if (> n 0) 'bold 'shadow))))
+    (magit--propertize-face (number-to-string n) (if (> n 0) 'bold 'shadow))))
 
 ;;; Read Repository
 
@@ -263,11 +282,7 @@ then read an arbitrary directory using `read-directory-name'
 instead."
   (if-let ((repos (and (not read-directory-name)
                        magit-repository-directories
-                       (magit-list-repos-uniquify
-                        (--map (cons (file-name-nondirectory
-                                      (directory-file-name it))
-                                     it)
-                               (magit-list-repos))))))
+                       (magit-repos-alist))))
       (let ((reply (magit-completing-read "Git repository" repos)))
         (file-name-as-directory
          (or (cdr (assoc reply repos))
@@ -285,7 +300,7 @@ instead."
 
 (defun magit-list-repos-1 (directory depth)
   (cond ((file-readable-p (expand-file-name ".git" directory))
-         (list directory))
+         (list (file-name-as-directory directory)))
         ((and (> depth 0) (magit-file-accessible-directory-p directory))
          (--mapcat (and (file-directory-p it)
                         (magit-list-repos-1 it (1- depth)))
@@ -312,6 +327,11 @@ instead."
                                value))))))
      dict)
     result))
+
+(defun magit-repos-alist ()
+  (magit-list-repos-uniquify
+   (--map (cons (file-name-nondirectory (directory-file-name it)) it)
+          (magit-list-repos))))
 
 ;;; _
 (provide 'magit-repos)
