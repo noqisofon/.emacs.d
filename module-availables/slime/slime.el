@@ -3,7 +3,7 @@
 ;; URL: https://github.com/slime/slime
 ;; Package-Requires: ((cl-lib "0.5") (macrostep "0.9"))
 ;; Keywords: languages, lisp, slime
-;; Version: 2.23
+;; Version: 2.24
 
 ;;;; License and Commentary
 
@@ -107,19 +107,19 @@ the Emacs Lisp package.")
                  :test #'string-equal))))
 
 (defvar slime-lisp-modes '(lisp-mode))
-(defvar slime-contribs nil
+(defvar slime-contribs '(slime-fancy)
   "A list of contrib packages to load with SLIME.")
 (define-obsolete-variable-alias 'slime-setup-contribs
 'slime-contribs "2.3.2")
 
-(defun slime-setup (&optional contribs)
+(cl-defun slime-setup (&optional (contribs nil contribs-p))
   "Setup Emacs so that lisp-mode buffers always use SLIME.
 CONTRIBS is a list of contrib packages to load. If `nil', use
 `slime-contribs'. "
   (interactive)
   (when (member 'lisp-mode slime-lisp-modes)
     (add-hook 'lisp-mode-hook 'slime-lisp-mode-hook))
-  (when contribs
+  (when contribs-p
     (setq slime-contribs contribs))
   (slime--setup-contribs))
 
@@ -1097,7 +1097,7 @@ DIRECTORY change to this directory before starting the process.
 (defun slime-start* (options)
   (apply #'slime-start options))
 
-(defun slime-connect (host port &optional _coding-system interactive-p)
+(defun slime-connect (host port &optional _coding-system interactive-p &rest parameters)
   "Connect to a running Swank server. Return the connection."
   (interactive (list (read-from-minibuffer
                       "Host: " (cl-first slime-connect-host-history)
@@ -1113,7 +1113,7 @@ DIRECTORY change to this directory before starting the process.
              (y-or-n-p "Close old connections first? "))
     (slime-disconnect-all))
   (message "Connecting to Swank on port %S.." port)
-  (let* ((process (slime-net-connect host port))
+  (let* ((process (apply 'slime-net-connect host port parameters))
          (slime-dispatching-connection process))
     (slime-setup-connection process)))
 
@@ -1418,10 +1418,10 @@ first line of the file."
                              payload)))
         (process-send-string proc string)))))
 
-(defun slime-net-connect (host port)
+(defun slime-net-connect (host port &rest parameters)
   "Establish a connection with a CL."
   (let* ((inhibit-quit nil)
-         (proc (open-network-stream "SLIME Lisp" nil host port))
+         (proc (apply 'open-network-stream "SLIME Lisp" nil host port parameters))
          (buffer (slime-make-net-buffer " *cl-connection*")))
     (push proc slime-net-processes)
     (set-process-buffer proc buffer)
@@ -2258,6 +2258,12 @@ Debugged requests are ignored."
           ((:eval thread tag form-string)
            (slime-check-eval-in-emacs-enabled)
            (slime-eval-for-lisp thread tag form-string))
+          ((:ed-rpc-no-wait fn-name &rest args)
+           (let ((fn (intern-soft fn-name)))
+             (slime-check-rpc-allowed fn)
+             (apply fn args)))
+          ((:ed-rpc thread tag fn-name &rest args)
+           (slime-rpc-from-lisp thread tag (intern-soft fn-name) args))
           ((:emacs-return thread tag value)
            (slime-send `(:emacs-return ,thread ,tag ,value)))
           ((:ed what)
@@ -3908,16 +3914,14 @@ The result is a (possibly empty) list of definitions."
                (setq l (cdr l)))
              (slime-lisp-readable-p l)))))
 
-(defun slime-eval-for-lisp (thread tag form-string)
+(defun slime--funcall-and-dispatch-result (thread tag fn &rest args)
   (let ((ok nil)
         (value nil)
-        (error nil)
-        (c (slime-connection)))
+        (error nil))
     (unwind-protect
         (condition-case err
             (progn
-              (slime-check-eval-in-emacs-enabled)
-              (setq value (eval (read form-string)))
+              (setq value (apply fn args))
               (setq ok t))
           ((debug error)
            (setq error err)))
@@ -3929,13 +3933,42 @@ The result is a (possibly empty) list of definitions."
                                           . ,(mapcar #'slime-prin1-to-string
                                                      (cdr error))))
                           (t `(:abort)))))
-        (slime-dispatch-event `(:emacs-return ,thread ,tag ,result) c)))))
+        (slime-dispatch-event `(:emacs-return ,thread ,tag ,result))))))
+
+(defun slime-eval-for-lisp (thread tag form-string)
+  (slime--funcall-and-dispatch-result thread tag
+                                      (lambda (s) (eval (read s)))
+                                      form-string))
 
 (defun slime-check-eval-in-emacs-enabled ()
   "Raise an error if `slime-enable-evaluate-in-emacs' isn't true."
   (unless slime-enable-evaluate-in-emacs
     (error (concat "slime-eval-in-emacs disabled for security. "
                    "Set `slime-enable-evaluate-in-emacs' true to enable it."))))
+
+
+;;;; RPC from Lisp
+
+(defmacro defslimefun (name arglist &rest body)
+  "Define a function via `cl-defun' that can be invoked from SWANK."
+  `(progn
+     (put ',name 'slime-rpc t)
+     (cl-defun ,name ,arglist ,@body)))
+
+(defun slime-rpc-allowed-p (fn)
+  (get fn 'slime-rpc))
+
+(defun slime-check-rpc-allowed (fn)
+  "Raise an error if FN does not denote a function defined via
+`defslimefun'."
+  (unless (slime-rpc-allowed-p fn)
+    (error "Lisp tried to RPC `%s', but it wasn't defined via `defslimefun'."
+           fn)))
+
+(defun slime-rpc-from-lisp (thread tag fn args)
+  (if (not (slime-rpc-allowed-p fn))
+      (slime-dispatch-event '(:ed-rpc-forbidden ,thread ,tag ,fn))
+    (apply #'slime--funcall-and-dispatch-result thread tag fn args)))
 
 
 ;;;; `ED'
@@ -6111,10 +6144,10 @@ was called originally."
            (old-column (current-column)))
       (erase-buffer)
       (slime-insert-threads threads)
-      (let ((new-line (cl-position old-thread-id (cdr threads)
-                                   :key #'car :test #'equal)))
+      (let ((new-position (cl-position old-thread-id (cdr threads)
+                                       :key #'car :test #'equal)))
         (goto-char (point-min))
-        (forward-line (or new-line old-line))
+        (forward-line (or new-position (1- old-line)))
         (move-to-column old-column)
         (slime-move-point (point))))))
 
@@ -7548,6 +7581,33 @@ The returned bounds are either nil or non-empty."
              `((,regexp (1 font-lock-keyword-face)
                         (2 font-lock-variable-name-face)))))
 
+;;;; target manipulation (used by slime-presentations, slime-media,
+;;;;                      slime-repl and slime-buffer-streams, at
+;;;;                      least)
+
+(defvar slime-output-target-to-marker
+  (make-hash-table)
+  "Map from TARGET ids to Emacs markers.
+The markers indicate where output should be inserted.")
+
+(defun slime-output-target-marker (target)
+  "Return the marker where output for TARGET should be inserted."
+  (gethash target slime-output-target-to-marker))
+
+(defun slime-emit-to-target (string target)
+  "Insert STRING at target TARGET.
+See `slime-output-target-to-marker'."
+  (let* ((marker (slime-output-target-marker target))
+         (buffer (and marker (marker-buffer marker))))
+    (when buffer
+      (with-current-buffer buffer
+        (save-excursion
+          ;; Insert STRING at MARKER, then move MARKER behind
+          ;; the insertion.
+          (goto-char marker)
+          (insert-before-markers string)
+          (set-marker marker (point)))))))
+
 ;;;; Finishing up
 
 (eval-when-compile
@@ -7589,7 +7649,8 @@ The returned bounds are either nil or non-empty."
 (run-hooks 'slime-load-hook)
 (provide 'slime)
 
-(slime-setup)
+(when (member 'lisp-mode slime-lisp-modes)
+  (add-hook 'lisp-mode-hook 'slime-lisp-mode-hook))
 
 ;; Local Variables:
 ;; outline-regexp: ";;;;+"
