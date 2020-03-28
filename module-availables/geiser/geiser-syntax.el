@@ -1,6 +1,6 @@
 ;;; geiser-syntax.el -- utilities for parsing scheme syntax
 
-;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016 Jose Antonio Ortega Ruiz
+;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2019 Jose Antonio Ortega Ruiz
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
@@ -10,6 +10,7 @@
 ;; Start date: Sun Feb 08, 2009 15:03
 
 
+;;; Code:
 
 (require 'geiser-impl)
 (require 'geiser-popup)
@@ -17,7 +18,7 @@
 
 (require 'scheme)
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 
 ;;; Indentation:
@@ -196,14 +197,14 @@ implementation-specific entries for font-lock-keywords.")
 (defun geiser-syntax--read/next-token ()
   (skip-syntax-forward "->")
   (if (geiser-syntax--read/eos) '(eob)
-    (case (char-after)
+    (cl-case (char-after)
       (?\; (geiser-syntax--read/skip-comment))
       ((?\( ?\[) (geiser-syntax--read/token 'lparen))
       ((?\) ?\]) (geiser-syntax--read/token 'rparen))
       (?. (if (memq (car (syntax-after (1+ (point)))) '(0 11 12))
               (geiser-syntax--read/token 'dot)
             (cons 'atom (geiser-syntax--read/elisp))))
-      (?\# (case (geiser-syntax--read/next-char)
+      (?\# (cl-case (geiser-syntax--read/next-char)
              ('nil '(eob))
              (?| (geiser-syntax--read/skip-comment))
              (?: (if (geiser-syntax--read/next-char)
@@ -218,6 +219,14 @@ implementation-specific entries for font-lock-keywords.")
                         ((equal (symbol-name tok) "f") '(boolean . :f))
                         (tok (cons 'atom tok))
                         (t (geiser-syntax--read/next-token)))))))
+      (?| (cl-case (geiser-syntax--read/next-char) ;; gambit style block comments
+            ('nil '(eob))
+            (?# (geiser-syntax--read/skip-comment))
+            (t (let ((tok (geiser-syntax--read/symbol)))
+                 (cond ((equal (symbol-name tok) "t") '(boolean . :t))
+                       ((equal (symbol-name tok) "f") '(boolean . :f))
+                       (tok (cons 'atom tok))
+                       (t (geiser-syntax--read/next-token)))))))
       (?\' (geiser-syntax--read/token '(quote . quote)))
       (?\` (geiser-syntax--read/token
             `(backquote . ,backquote-backquote-symbol)))
@@ -258,7 +267,7 @@ implementation-specific entries for font-lock-keywords.")
 (defun geiser-syntax--read ()
   (let ((token (geiser-syntax--read/next-token))
         (max-lisp-eval-depth (max max-lisp-eval-depth 3000)))
-    (case (car token)
+    (cl-case (car token)
       (eob nil)
       (lparen (geiser-syntax--read/list))
       (vectorb (apply 'vector (geiser-syntax--read/list)))
@@ -285,7 +294,7 @@ implementation-specific entries for font-lock-keywords.")
 
 (defsubst geiser-syntax--form-after-point (&optional boundary)
   (let ((geiser-syntax--read/buffer-limit (and (numberp boundary) boundary)))
-    (save-excursion (values (geiser-syntax--read) (point)))))
+    (save-excursion (list (geiser-syntax--read) (point)))))
 
 (defun geiser-syntax--mapconcat (fun lst sep)
   (cond ((null lst) "")
@@ -390,28 +399,28 @@ implementation-specific entries for font-lock-keywords.")
 
 (defun geiser-syntax--linearize (form)
   (cond ((not (listp form)) (list form))
-	((null form) nil)
-	(t (cons (car form) (geiser-syntax--linearize (cdr form))))))
+        ((null form) nil)
+        (t (cons (car form) (geiser-syntax--linearize (cdr form))))))
 
 (defun geiser-syntax--scan-locals (bfs sbfs form nesting locals)
   (if (or (null form) (not (listp form)))
       (geiser-syntax--normalize locals)
     (if (not (geiser-syntax--binding-form-p bfs sbfs (car form)))
-	(geiser-syntax--scan-locals bfs sbfs
-				    (car (last form))
+        (geiser-syntax--scan-locals bfs sbfs
+                                    (car (last form))
                                     (1- nesting) locals)
       (let* ((head (car form))
-	     (name (geiser-syntax--if-symbol (cadr form)))
-	     (names (if name (geiser-syntax--if-list (caddr form))
-		      (geiser-syntax--if-list (cadr form))))
+             (name (geiser-syntax--if-symbol (cadr form)))
+             (names (if name (geiser-syntax--if-list (caddr form))
+                      (geiser-syntax--if-list (cadr form))))
              (bns (and name
                        (geiser-syntax--binding-form-p bfs sbfs (car names))))
-	     (rest (if (and name (not bns)) (cdddr form) (cddr form)))
-	     (use-names (and (or rest
+             (rest (if (and name (not bns)) (cdddr form) (cddr form)))
+             (use-names (and (or rest
                                  (< nesting 1)
                                  (geiser-syntax--binding-form*-p sbfs head))
                              (not bns))))
-	(when name (push name locals))
+        (when name (push name locals))
         (when (geiser-syntax--symbol-eq head 'case-lambda)
           (dolist (n (and (> nesting 0) (caar (last form))))
             (when n (push n locals)))
@@ -421,19 +430,19 @@ implementation-specific entries for font-lock-keywords.")
           (dolist (n (and (> nesting 0) (cdaar (last form))))
             (when n (push n locals)))
           (setq rest (and (> nesting 0) (cdr form))))
-	(when use-names
-	  (dolist (n (geiser-syntax--linearize names))
+        (when use-names
+          (dolist (n (geiser-syntax--linearize names))
             (let ((xs (if (and (listp n) (listp (car n))) (car n) (list n))))
               (dolist (x xs) (when x (push x locals))))))
-	(dolist (f (butlast rest))
-	  (when (and (listp f)
+        (dolist (f (butlast rest))
+          (when (and (listp f)
                      (geiser-syntax--symbol-eq (car f) 'define)
                      (cadr f))
-	    (push (cadr f) locals)))
-	(geiser-syntax--scan-locals bfs sbfs
-				    (car (last (or rest names)))
+            (push (cadr f) locals)))
+        (geiser-syntax--scan-locals bfs sbfs
+                                    (car (last (or rest names)))
                                     (1- nesting)
-				    locals)))))
+                                    locals)))))
 
 (defun geiser-syntax--locals-around-point (bfs sbfs)
   (when (eq major-mode 'scheme-mode)
@@ -444,7 +453,7 @@ implementation-specific entries for font-lock-keywords.")
         (let ((boundary (point))
               (nesting (geiser-syntax--nesting-level)))
           (geiser-syntax--pop-to-top)
-          (multiple-value-bind (form end)
+          (cl-destructuring-bind (form end)
               (geiser-syntax--form-after-point boundary)
             (delete sym
                     (geiser-syntax--scan-locals bfs
@@ -513,7 +522,7 @@ implementation-specific entries for font-lock-keywords.")
              (or geiser-default-implementation
                  (car geiser-active-implementations))))
         (scheme-mode))
-      (font-lock-ensure)
+      (geiser--font-lock-ensure)
       (let ((pos (point-min)) next)
         (while (setq next (next-property-change pos))
           ;; Handle additional properties from font-lock, so as to

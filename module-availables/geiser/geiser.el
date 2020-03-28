@@ -8,9 +8,12 @@
 ;; have received a copy of the license along with this program. If
 ;; not, see <http://www.xfree86.org/3.3.6/COPYRIGHT2.html#5>.
 
-
+;;; Commentary:
+
 ;; Autoloads and basic setup for geiser.
 
+
+;;; Code:
 ;;; Locations:
 
 ;;;###autoload
@@ -79,6 +82,17 @@
   "Connect to a remote Geiser Guile REPL." t)
 
 ;;;###autoload
+(autoload 'run-gambit "geiser-gambit" "Start a Geiser Gambit REPL." t)
+
+;;;###autoload
+(autoload 'switch-to-gambit "geiser-gambit"
+  "Start a Geiser Gambit REPL, or switch to a running one." t)
+
+;;;###autoload
+(autoload 'connect-to-gambit "geiser-gambit"
+  "Connect to a remote Geiser Gambit REPL." t)
+
+;;;###autoload
 (autoload 'run-racket "geiser-racket" "Start a Geiser Racket REPL." t)
 
 ;;;###autoload
@@ -144,12 +158,13 @@
         geiser-faces
         geiser-mode
         geiser-guile
+        geiser-gambit
         geiser-image
         geiser-racket
         geiser-chicken
-	geiser-chez
-	geiser-chibi
-	geiser-mit
+        geiser-chez
+        geiser-chibi
+        geiser-mit
         geiser-implementation
         geiser-xref))
 

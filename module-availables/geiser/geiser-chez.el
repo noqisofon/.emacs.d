@@ -1,9 +1,12 @@
-;; geiser-chez.el -- Chez Scheme's implementation of the geiser protocols
+;;; geiser-chez.el -- Chez Scheme's implementation of the geiser protocols
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
 ;; have received a copy of the license along with this program. If
 ;; not, see <http://www.xfree86.org/3.3.6/COPYRIGHT2.html#5>.
+
+
+;;; Code:
 
 (require 'geiser-connection)
 (require 'geiser-syntax)
@@ -17,7 +20,7 @@
 (require 'compile)
 (require 'info-look)
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 
 ;;; Customization:
@@ -32,6 +35,11 @@
   :type '(choice string (repeat string))
   :group 'geiser-chez)
 
+(geiser-custom--defcustom geiser-chez-init-file "~/.chez-geiser"
+  "Initialization file with user code for the Chez REPL."
+  :type 'string
+  :group 'geiser-chez)
+
 
 ;;; REPL support:
 
@@ -43,8 +51,10 @@
 (defun geiser-chez--parameters ()
   "Return a list with all parameters needed to start Chez Scheme.
 This function uses `geiser-chez-init-file' if it exists."
-  `(,(expand-file-name "chez/geiser/geiser.ss" geiser-scheme-dir))
-  )
+  (let ((init-file (and (stringp geiser-chez-init-file)
+                        (expand-file-name geiser-chez-init-file))))
+    `(,@(and init-file (file-readable-p init-file) (list init-file))
+      ,(expand-file-name "chez/geiser/geiser.ss" geiser-scheme-dir))))
 
 (defconst geiser-chez--prompt-regexp "> ")
 
@@ -52,13 +62,13 @@ This function uses `geiser-chez-init-file' if it exists."
 ;;; Evaluation support:
 
 (defun geiser-chez--geiser-procedure (proc &rest args)
-  (case proc
+  (cl-case proc
     ((eval compile)
      (let ((form (mapconcat 'identity (cdr args) " "))
            (module (cond ((string-equal "'()" (car args))
                           "'()")
                          ((and (car args))
-                             (concat "'" (car args)))
+                          (concat "'" (car args)))
                          (t
                           "#f"))))
        (format "(geiser:eval %s '%s)" module form)))

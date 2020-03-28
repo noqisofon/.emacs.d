@@ -1,9 +1,12 @@
-;; geiser-chibi.el -- Chibi Scheme's implementation of the geiser protocols
+;;; geiser-chibi.el -- Chibi Scheme's implementation of the geiser protocols
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
 ;; have received a copy of the license along with this program. If
 ;; not, see <http://www.xfree86.org/3.3.6/COPYRIGHT2.html#5>.
+
+
+;;; Code:
 
 (require 'geiser-connection)
 (require 'geiser-syntax)
@@ -17,7 +20,7 @@
 (require 'compile)
 (require 'info-look)
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 
 ;;; Customization:
@@ -32,6 +35,13 @@
   :type '(choice string (repeat string))
   :group 'geiser-chibi)
 
+(geiser-custom--defcustom geiser-chibi-extra-command-line-parameters
+    '("-R" "-m" "chibi ast")
+  "Additional parameters to supply to the Chibi binary."
+  :type '(repeat string)
+  :group 'geiser-chibi)
+
+
 
 ;;; REPL support:
 
@@ -43,8 +53,10 @@
 (defun geiser-chibi--parameters ()
   "Return a list with all parameters needed to start Chibi Scheme.
 This function uses `geiser-chibi-init-file' if it exists."
-  `("-I" ,(expand-file-name "chibi/geiser/" geiser-scheme-dir)
-    "-m" "geiser")
+  `(,@geiser-chibi-extra-command-line-parameters
+    "-I" ,(expand-file-name "chibi/geiser/" geiser-scheme-dir)
+    "-m" "geiser"
+    ,@(and (listp geiser-chibi-binary) (cdr geiser-chibi-binary)))
   )
 
 (defconst geiser-chibi--prompt-regexp "> ")
@@ -53,13 +65,13 @@ This function uses `geiser-chibi-init-file' if it exists."
 ;;; Evaluation support:
 
 (defun geiser-chibi--geiser-procedure (proc &rest args)
-  (case proc
+  (cl-case proc
     ((eval compile)
      (let ((form (mapconcat 'identity (cdr args) " "))
            (module (cond ((string-equal "'()" (car args))
                           "'()")
                          ((and (car args))
-                             (concat "'" (car args)))
+                          (concat "'" (car args)))
                          (t
                           "#f"))))
        (format "(geiser:eval %s '%s)" module form)))
@@ -72,8 +84,7 @@ This function uses `geiser-chibi-init-file' if it exists."
        (format "(geiser:%s %s)" proc form)))))
 
 (defun geiser-chibi--get-module (&optional module)
-  (cond ((null module)
-         :f)
+  (cond ((null module)  :f)
         ((listp module) module)
         ((stringp module)
          (condition-case nil
@@ -91,15 +102,17 @@ This function uses `geiser-chibi-init-file' if it exists."
   (format "(import %s)" module))
 
 (defun geiser-chibi--exit-command () "(exit 0)")
+
 ;; 
+
 ;; ;;; REPL startup
 
 (defconst geiser-chibi-minimum-version "0.7.3")
 
 (defun geiser-chibi--version (binary)
-  (second (split-string
-           (car (process-lines binary "-V"))
-           " ")))
+  (cadr (split-string
+         (car (process-lines binary "-V"))
+         " ")))
 
 (defun geiser-chibi--startup (remote)
   (let ((geiser-log-verbose-p t))
@@ -134,4 +147,3 @@ This function uses `geiser-chibi-init-file' if it exists."
 (geiser-impl--add-to-alist 'regexp "\\.sld$" 'chibi t)
 
 (provide 'geiser-chibi)
-

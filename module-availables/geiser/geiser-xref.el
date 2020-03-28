@@ -1,4 +1,4 @@
-;; geiser-xref.el -- utilities for cross-referencing
+;;; geiser-xref.el -- utilities for cross-referencing
 
 ;; Copyright (C) 2009, 2010, 2012 Jose Antonio Ortega Ruiz
 
@@ -10,6 +10,7 @@
 ;; Start date: Thu Mar 05, 2009 23:03
 
 
+;;; Code:
 
 (require' geiser-edit)
 (require 'geiser-autodoc)
@@ -106,19 +107,19 @@
 
 (defun geiser-xref--display-xrefs (header xrefs)
   (geiser-xref--with-buffer
-   (erase-buffer)
-   (geiser--insert-with-face header 'geiser-font-lock-xref-header)
-   (newline)
-   (let ((last-module))
-     (dolist (xref (sort xrefs 'geiser-xref--module<))
-       (let ((module (format "%s" (cdr (assoc "module" xref)))))
-         (when (not (equal module last-module))
-           (insert "\n  In module ")
-           (geiser--insert-with-face (format "%s" module)
-                                     'geiser-font-lock-xref-header)
-           (newline 2)
-           (setq last-module module))
-         (geiser-xref--insert-button xref)))))
+    (erase-buffer)
+    (geiser--insert-with-face header 'geiser-font-lock-xref-header)
+    (newline)
+    (let ((last-module))
+      (dolist (xref (sort xrefs 'geiser-xref--module<))
+	(let ((module (format "%s" (cdr (assoc "module" xref)))))
+          (when (not (equal module last-module))
+            (insert "\n  In module ")
+            (geiser--insert-with-face (format "%s" module)
+                                      'geiser-font-lock-xref-header)
+            (newline 2)
+            (setq last-module module))
+          (geiser-xref--insert-button xref)))))
   (geiser-xref--pop-to-buffer)
   (goto-char (point-min)))
 

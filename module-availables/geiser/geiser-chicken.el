@@ -1,8 +1,8 @@
-;; geiser-chicken.el -- chicken's implementation of the geiser protocols
+;;; geiser-chicken.el -- chicken's implementation of the geiser protocols
 
-;; Copyright (C) 2014, 2015 Daniel Leslie
+;; Copyright (C) 2014, 2015, 2019 Daniel Leslie
 
-;; Based on geiser-guile.el by Jose Antonio Ortego Ruize
+;; Based on geiser-guile.el by Jose Antonio Ortega Ruiz
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
@@ -11,6 +11,8 @@
 
 ;; Start date: Sun Mar 08, 2009 23:03
 
+
+;;; Code:
 
 (require 'geiser-connection)
 (require 'geiser-syntax)
@@ -24,7 +26,7 @@
 (require 'compile)
 (require 'info-look)
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 (defconst geiser-chicken-builtin-keywords
   '("assume"
@@ -123,11 +125,11 @@ This function uses `geiser-chicken-init-file' if it exists."
   (let ((init-file (and (stringp geiser-chicken-init-file)
                         (expand-file-name geiser-chicken-init-file)))
         (n-flags (and (not geiser-chicken-load-init-file-p) '("-n"))))
-  `(,@(and (listp geiser-chicken-binary) (cdr geiser-chicken-binary))
-    ,@n-flags "-include-path" ,(expand-file-name "chicken/" geiser-scheme-dir)
-    ,@(apply 'append (mapcar (lambda (p) (list "-include-path" p))
-                             geiser-chicken-load-path))
-    ,@(and init-file (file-readable-p init-file) (list init-file)))))
+    `(,@(and (listp geiser-chicken-binary) (cdr geiser-chicken-binary))
+      ,@n-flags "-include-path" ,(expand-file-name "chicken/" geiser-scheme-dir)
+      ,@(apply 'append (mapcar (lambda (p) (list "-include-path" p))
+                               geiser-chicken-load-path))
+      ,@(and init-file (file-readable-p init-file) (list init-file)))))
 
 (defconst geiser-chicken--prompt-regexp "#[^;]*;[^:0-9]*:?[0-9]+> ")
 
@@ -135,10 +137,10 @@ This function uses `geiser-chicken-init-file' if it exists."
 ;;; Evaluation support:
 
 (defun geiser-chicken--geiser-procedure (proc &rest args)
-  (case proc
+  (cl-case proc
     ((eval compile)
      (let ((form (mapconcat 'identity (cdr args) " "))
-	   (module (if (car args) (concat "'" (car args)) "#f")))
+           (module (if (car args) (concat "'" (car args)) "#f")))
        (format "(geiser-eval %s '%s)" module form)))
     ((load-file compile-file)
      (format "(geiser-load-file %s)" (car args)))
@@ -185,7 +187,7 @@ This function uses `geiser-chicken-init-file' if it exists."
 (defun geiser-chicken--symbol-begin (module)
   (if module
       (max (save-excursion (beginning-of-line) (point))
-	   (save-excursion (skip-syntax-backward "^(>") (1- (point))))
+           (save-excursion (skip-syntax-backward "^(>") (1- (point))))
     (save-excursion (skip-syntax-backward "^'-()>") (point))))
 
 
@@ -258,10 +260,14 @@ This function uses `geiser-chicken-init-file' if it exists."
 (defconst geiser-chicken-minimum-version "4.8.0.0")
 
 (defun geiser-chicken--version (binary)
-  (cadar
-   (seq-filter #'(lambda (l) (string-equal "Version" (car l)))
-	       (mapcar #'split-string 
-		       (process-lines binary "-version")))))
+  (shell-command-to-string
+   (format "%s -e '(display \
+                     (or (handle-exceptions exn \
+                           #f \
+                           (eval `(begin (import chicken.platform) \
+                                         (chicken-version)))) \
+                         (chicken-version)))'"
+           (if (listp binary) (car binary) binary))))
 
 (defun connect-to-chicken ()
   "Start a Chicken REPL connected to a remote process."
@@ -291,12 +297,12 @@ This function uses `geiser-chicken-init-file' if it exists."
       (geiser-eval--send/wait load-sequence))))
 
 (defun geiser-chicken5-load ()
-  (let ((source (expand-file-name "chicken/geiser/chicken5.scm" geiser-scheme-dir))
-	(suppression-prefix
-         "(define geiser-stdout (current-output-port))(current-output-port (make-output-port (lambda a #f) (lambda a #f)))")
-        (suppression-postfix
-         "(current-output-port geiser-stdout)"))
-    (geiser-eval--send/wait (format "%s (load \"%s\") (import geiser) %s" suppression-prefix source suppression-postfix))))
+  (let ((source (expand-file-name "chicken/geiser/chicken5.scm"
+                                  geiser-scheme-dir)))
+    (geiser-eval--send/wait
+     (format
+      "(display '((result . t) (output . f))) (load \"%s\") (import geiser)"
+      source))))
 
 (defun geiser-chicken--startup (remote)
   (compilation-setup t)

@@ -1,4 +1,4 @@
-;; geiser-image.el -- support for image display
+;;; geiser-image.el -- support for image display
 
 ;; Copyright (c) 2012, 2015 Jose Antonio Ortega Ruiz
 
@@ -11,6 +11,7 @@
 ;; Start date: Sun Sep 02, 2012 00:00
 
 
+;;; Code:
 
 (require 'geiser-custom)
 (require 'geiser-base)

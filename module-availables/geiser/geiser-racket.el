@@ -1,4 +1,4 @@
-;; geiser-racket.el -- geiser support for Racket scheme
+;;; geiser-racket.el -- geiser support for Racket scheme
 
 ;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016 Jose Antonio Ortega Ruiz
 
@@ -10,6 +10,7 @@
 ;; Start date: Sat Apr 25, 2009 21:13
 
 
+;;; Code:
 
 (require 'geiser-edit)
 (require 'geiser-doc)
@@ -22,7 +23,7 @@
 
 (require 'compile)
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 
 ;;; Customization:
@@ -32,15 +33,15 @@
   :group 'geiser)
 
 (geiser-custom--defcustom geiser-racket-binary
-  (cond ((eq system-type 'windows-nt) "Racket.exe")
-        (t "racket"))
+    (cond ((eq system-type 'windows-nt) "Racket.exe")
+          (t "racket"))
   "Name to use to call the racket executable when starting a REPL."
   :type '(choice string (repeat string))
   :group 'geiser-racket)
 
 (geiser-custom--defcustom geiser-racket-gracket-binary
-  (cond ((eq system-type 'windows-nt) "GRacket-text.exe")
-        (t "gracket-text"))
+    (cond ((eq system-type 'windows-nt) "GRacket-text.exe")
+          (t "gracket-text"))
   "Name to use to call the gracket executable when starting a REPL.
 This executable is used by `run-gracket', and, if
 `geiser-racket-use-gracket-p' is set to t, by `run-racket'."
@@ -161,7 +162,7 @@ using start-geiser, a procedure in the geiser/server module."
           (t (format ",enter %s" module)))))
 
 (defun geiser-racket--geiser-procedure (proc &rest args)
-  (case proc
+  (cl-case proc
     ((eval compile)
      (format ",geiser-eval %s %s %s"
              (or (car args) "#f")
@@ -445,7 +446,7 @@ Use a prefix to be asked for a submodule name."
   (binding-forms* geiser-racket--binding-forms*))
 
 (geiser-impl--add-to-alist 'regexp "\\.ss$" 'racket t)
-(geiser-impl--add-to-alist 'regexp "\\.rkt$" 'racket t)
+(geiser-impl--add-to-alist 'regexp "\\.rkt[dl]?$" 'racket t)
 
 (defun run-gracket ()
   "Start the Racket REPL using gracket instead of plain racket."

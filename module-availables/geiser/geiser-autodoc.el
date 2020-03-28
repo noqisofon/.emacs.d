@@ -1,4 +1,4 @@
-;; geiser-autodoc.el -- autodoc mode
+;;; geiser-autodoc.el -- autodoc mode
 
 ;; Copyright (C) 2009, 2010, 2011, 2012, 2015, 2016 Jose Antonio Ortega Ruiz
 
@@ -10,6 +10,7 @@
 ;; Start date: Sun Feb 08, 2009 19:44
 
 
+;;; Code:
 
 (require 'geiser-eval)
 (require 'geiser-syntax)
@@ -146,7 +147,7 @@ when `geiser-autodoc-display-module-p' is on."
         (args (cdr (assoc "args" signature)))
         (module (cdr (assoc "module" signature))))
     (if (not args)
-      (geiser-autodoc--value-str proc module (cdr (assoc "value" signature)))
+	(geiser-autodoc--value-str proc module (cdr (assoc "value" signature)))
       (save-current-buffer
         (set-buffer (geiser-syntax--font-lock-buffer))
         (erase-buffer)

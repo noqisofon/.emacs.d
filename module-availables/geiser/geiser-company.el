@@ -1,4 +1,4 @@
-;; geiser-company.el -- integration with company-mode
+;;; geiser-company.el -- integration with company-mode
 
 ;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2016 Jose Antonio Ortega Ruiz
 
@@ -10,6 +10,7 @@
 ;; Start date: Mon Aug 24, 2009 12:44
 
 
+;;; Code:
 
 (require 'geiser-autodoc)
 (require 'geiser-completion)
@@ -17,7 +18,7 @@
 (require 'geiser-base)
 (require 'geiser-doc)
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 
 ;;; Helpers:
@@ -47,7 +48,7 @@
          (symbol (make-symbol id))
          (ds (geiser-doc--get-docstring symbol module)))
     (if (or (not ds) (not (listp ds)))
-	(progn
+        (progn
           (message "No documentation available for '%s'" symbol)
           nil)
       (with-current-buffer (get-buffer-create "*company-documentation*")
@@ -119,7 +120,7 @@
      (defun geiser-company-backend (command &optional arg &rest ignored)
        "A `company-mode' completion back-end for `geiser-mode'."
        (interactive (list 'interactive))
-       (case command
+       (cl-case command
          ('interactive (company-begin-backend 'geiser-company-backend))
          ('prefix (geiser-company--prefix-at-point))
          ('candidates (geiser-company--candidates arg))
@@ -130,8 +131,8 @@
          ('sorted t)))
      (defun geiser-company--setup-company (enable)
        (when enable
-	 (set (make-local-variable 'company-backends)
-	      (add-to-list 'company-backends 'geiser-company-backend)))
+         (set (make-local-variable 'company-backends)
+              (add-to-list 'company-backends 'geiser-company-backend)))
        (company-mode (if enable 1 -1)))
      (add-hook 'company-completion-finished-hook
                'geiser-company--restore-autodoc)

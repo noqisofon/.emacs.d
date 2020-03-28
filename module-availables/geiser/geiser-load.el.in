@@ -4,6 +4,6 @@
 
 (require 'geiser)
 
-(setq geiser-scheme-dir "/d/home/rihine/.gasket/repositories/geiser/scheme")
+(setq geiser-scheme-dir "@abs_top_srcdir@/scheme")
 
 (provide 'geiser-load)

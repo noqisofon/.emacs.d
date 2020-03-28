@@ -1,9 +1,12 @@
-;; geiser-mit.el -- MIT/GNU Scheme's implementation of the geiser protocols
+;;; geiser-mit.el -- MIT/GNU Scheme's implementation of the geiser protocols
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
 ;; have received a copy of the license along with this program. If
 ;; not, see <http://www.xfree86.org/3.3.6/COPYRIGHT2.html#5>.
+
+
+;;; Code:
 
 (require 'geiser-connection)
 (require 'geiser-syntax)
@@ -18,7 +21,7 @@
 (require 'info-look)
 
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 
 ;;; Customization:
@@ -60,13 +63,13 @@ This function uses `geiser-mit-init-file' if it exists."
 ;;; Evaluation support:
 
 (defun geiser-mit--geiser-procedure (proc &rest args)
-  (case proc
+  (cl-case proc
     ((eval compile)
      (let ((form (mapconcat 'identity (cdr args) " "))
            (module (cond ((string-equal "'()" (car args))
                           "'()")
                          ((and (car args))
-                             (concat "'" (car args)))
+                          (concat "'" (car args)))
                          (t
                           "#f"))))
        (format "(geiser:eval %s '%s)" module form)))

@@ -1,6 +1,6 @@
-;; geiser-guile.el -- guile's implementation of the geiser protocols
+;;; geiser-guile.el -- guile's implementation of the geiser protocols
 
-;; Copyright (C) 2009-2018 Jose Antonio Ortega Ruiz
+;; Copyright (C) 2009-2018, 2020 Jose Antonio Ortega Ruiz
 ;; Copyright (C) 2017 Jan Nieuwenhuizen <janneke@gnu.org>
 
 ;; This program is free software; you can redistribute it and/or
@@ -11,6 +11,7 @@
 ;; Start date: Sun Mar 08, 2009 23:03
 
 
+;;; Code:
 
 (require 'geiser-connection)
 (require 'geiser-syntax)
@@ -24,7 +25,7 @@
 (require 'compile)
 (require 'info-look)
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 
 ;;; Customization:
@@ -34,9 +35,9 @@
   :group 'geiser)
 
 (geiser-custom--defcustom geiser-guile-binary
-  (cond ((eq system-type 'windows-nt) "guile.exe")
-        ((eq system-type 'darwin) "guile")
-        (t "guile"))
+    (cond ((eq system-type 'windows-nt) "guile.exe")
+          ((eq system-type 'darwin) "guile")
+          (t "guile"))
   "Name to use to call the Guile executable when starting a REPL."
   :type '(choice string (repeat string))
   :group 'geiser-guile)
@@ -120,7 +121,7 @@ effect on new REPLs. For existing ones, use the command
   :group 'geiser-guile)
 
 (geiser-custom--defcustom geiser-guile-manual-lookup-nodes
-                          '("Guile" "guile-2.0")
+    '("Guile" "guile-2.0")
   "List of info nodes that, when present, are used for manual lookups"
   :type '(repeat string)
   :group 'geiser-guile)
@@ -139,11 +140,11 @@ This function uses `geiser-guile-init-file' if it exists."
   (let ((init-file (and (stringp geiser-guile-init-file)
                         (expand-file-name geiser-guile-init-file)))
         (q-flags (and (not geiser-guile-load-init-file-p) '("-q"))))
-  `(,@(and (listp geiser-guile-binary) (cdr geiser-guile-binary))
-    ,@q-flags "-L" ,(expand-file-name "guile/" geiser-scheme-dir)
-    ,@(apply 'append (mapcar (lambda (p) (list "-L" p))
-                             geiser-guile-load-path))
-    ,@(and init-file (file-readable-p init-file) (list "-l" init-file)))))
+    `(,@(and (listp geiser-guile-binary) (cdr geiser-guile-binary))
+      ,@q-flags "-L" ,(expand-file-name "guile/" geiser-scheme-dir)
+      ,@(apply 'append (mapcar (lambda (p) (list "-L" p))
+                               geiser-guile-load-path))
+      ,@(and init-file (file-readable-p init-file) (list "-l" init-file)))))
 
 ;;(defconst geiser-guile--prompt-regexp "^[^() \n]+@([^)]*?)> ")
 (defconst geiser-guile--prompt-regexp "[^@()]+@([^)]*?)> ")
@@ -156,7 +157,7 @@ This function uses `geiser-guile-init-file' if it exists."
   (mapconcat 'identity args " "))
 
 (defun geiser-guile--geiser-procedure (proc &rest args)
-  (case proc
+  (cl-case proc
     ((eval compile) (format ",geiser-eval %s %s%s"
                             (or (car args) "#f")
                             (geiser-guile--linearize-args (cdr args))
@@ -279,8 +280,8 @@ This function uses `geiser-guile-init-file' if it exists."
    (geiser-syntax--simple-keywords geiser-guile-extra-keywords)
    (geiser-syntax--simple-keywords geiser-guile--builtin-keywords)
    `((,(rx "(" (group "define-once") eow (* space) (? (group (+ word))))
-       (1 font-lock-keyword-face)
-       (2 font-lock-variable-name-face nil t))
+      (1 font-lock-keyword-face)
+      (2 font-lock-variable-name-face nil t))
      ("(\\(define-module\\) +(\\([^)]+\\))"
       (1 font-lock-keyword-face)
       (2 font-lock-type-face nil t)))))
@@ -370,10 +371,13 @@ it spawn a server thread."
   (compilation-setup t)
   (font-lock-add-keywords nil `((,geiser-guile--path-rx
                                  1 compilation-error-face)))
-  (let ((geiser-log-verbose-p t))
+  (let ((geiser-log-verbose-p t)
+        (g-load-path (buffer-local-value 'geiser-guile-load-path
+                                         (or geiser-repl--last-scm-buffer
+                                             (current-buffer)))))
     (when remote (geiser-guile--set-geiser-load-path))
     (geiser-eval--send/wait ",use (geiser emacs)\n'done")
-    (dolist (dir geiser-guile-load-path)
+    (dolist (dir g-load-path)
       (let ((dir (expand-file-name dir)))
         (geiser-eval--send/wait `(:eval (:ge add-to-load-path ,dir)))))
     (geiser-guile-update-warning-level)))
@@ -382,7 +386,7 @@ it spawn a server thread."
 ;;; Manual lookup
 
 (defun geiser-guile--info-spec (&optional nodes)
-  (let* ((nrx "^[ 	]+-+ [^:]+:[ 	]*")
+  (let* ((nrx "^[       ]+-+ [^:]+:[    ]*")
          (drx "\\b")
          (res (when (Info-find-file "r5rs" t)
                 `(("(r5rs)Index" nil ,nrx ,drx)))))
@@ -396,13 +400,13 @@ it spawn a server thread."
 
 (info-lookup-add-help :topic 'symbol :mode 'geiser-guile-mode
                       :ignore-case nil
-                      :regexp "[^()`',\" 	\n]+"
+                      :regexp "[^()`',\"        \n]+"
                       :doc-spec (geiser-guile--info-spec))
 
 (defun guile--manual-look-up (id mod)
   (let ((info-lookup-other-window-flag
          geiser-guile-manual-lookup-other-window-p))
-    (info-lookup-symbol (symbol-name id) 'scheme-mode))
+    (info-lookup-symbol (symbol-name id) 'geiser-guile-mode))
   (when geiser-guile-manual-lookup-other-window-p
     (switch-to-buffer-other-window "*info*"))
   (search-forward (format "%s" id) nil t))

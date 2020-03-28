@@ -1,6 +1,6 @@
 ;;; geiser-base.el --- shared bits
 
-;; Copyright (C) 2009, 2010, 2012, 2013, 2015, 2016  Jose Antonio Ortega Ruiz
+;; Copyright (C) 2009, 2010, 2012, 2013, 2015, 2016, 2019  Jose Antonio Ortega Ruiz
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
@@ -10,6 +10,8 @@
 ;; Settings and vars shared by all geiser modules, including little
 ;; utilities and emacsen compatibility bits.
 
+
+;;; Code:
 ;;; Emacs compatibility:
 
 (require 'ring)
@@ -26,6 +28,14 @@
   (defsubst looking-at-p (regexp)
     (let ((inhibit-changing-match-data t))
       (looking-at regexp))))
+
+(defalias 'geiser--font-lock-ensure
+  (if (fboundp 'font-lock-ensure)
+      #'font-lock-ensure
+    (with-no-warnings
+      (lambda (&optional _beg _end)
+        (when font-lock-mode
+          (font-lock-fontify-buffer))))))
 
 ;;; Utilities:
 

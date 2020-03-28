@@ -1,4 +1,4 @@
-;; geiser-compile.el -- compile/load scheme files
+;;; geiser-compile.el -- compile/load scheme files
 
 ;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2016, 2018 Jose Antonio Ortega Ruiz
 
@@ -10,11 +10,14 @@
 ;; Start date: Wed Feb 11, 2009 00:16
 
 
+;;; Code:
 
 (require 'geiser-debug)
 (require 'geiser-autodoc)
 (require 'geiser-eval)
 (require 'geiser-base)
+
+(declare-function geiser-restart-repl "geiser-mode" ())
 
 
 ;;; Auxiliary functions:

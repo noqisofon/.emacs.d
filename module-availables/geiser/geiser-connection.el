@@ -9,10 +9,13 @@
 
 ;; Start date: Sat Feb 07, 2009 21:11
 
-
+;;; Commentary:
 
 ;; Connection datatype and functions for managing request queues
 ;; between emacs and inferior guile processes.
+
+
+;;; Code:
 
 (require 'geiser-log)
 (require 'geiser-syntax)
@@ -69,7 +72,7 @@
 (defun geiser-con--tq-create (process)
   (let ((tq (tq-create process)))
     (set-process-filter process
-			`(lambda (p s) (geiser-con--tq-filter ',tq s)))
+                        `(lambda (p s) (geiser-con--tq-filter ',tq s)))
     tq))
 
 (defun geiser-con--tq-filter (tq in)

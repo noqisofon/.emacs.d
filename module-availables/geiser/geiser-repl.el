@@ -1,6 +1,6 @@
 ;;; geiser-repl.el --- Geiser's REPL
 
-;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2015, 2016, 2018 Jose Antonio Ortega Ruiz
+;; Copyright (C) 2009, 2010, 2011, 2012, 2013, 2015, 2016, 2018, 2019, 2020 Jose Antonio Ortega Ruiz
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the Modified BSD License. You should
@@ -8,6 +8,7 @@
 ;; not, see <http://www.xfree86.org/3.3.6/COPYRIGHT2.html#5>.
 
 
+;;; Code:
 
 (require 'geiser-company)
 (require 'geiser-doc)
@@ -111,6 +112,22 @@ change that."
 
 (geiser-custom--defcustom geiser-repl-auto-indent-p t
   "Whether newlines for incomplete sexps are autoindented."
+  :type 'boolean
+  :group 'geiser-repl)
+
+(geiser-custom--defcustom geiser-repl-send-on-return-p t
+  "Sends input to REPL when ENTER is pressed in a balanced S-expression,
+regardless of cursor positioning.
+
+When off, pressing ENTER inside a balance S-expression will
+introduce a new line without sending input to the inferior
+Scheme process. This option is useful when using minor modes
+which might do parentheses balancing, or when entering additional
+arguments inside an existing expression.
+
+When on (the default), pressing ENTER inside a balanced S-expression
+will send the input to the inferior Scheme process regardless of the
+cursor placement."
   :type 'boolean
   :group 'geiser-repl)
 
@@ -370,14 +387,14 @@ module command as a string")
 
 (defun geiser-repl--save-remote-data (address)
   (setq geiser-repl--address address)
-  (setq header-line-format
-        (cond ((consp address)
+  (cond ((consp address)
+         (setq header-line-format
                (format "Host: %s   Port: %s"
                        (geiser-repl--host)
-                       (geiser-repl--port)))
-              ((stringp address)
-               (format "Socket: %s" address))
-              (t nil))))
+                       (geiser-repl--port))))
+        ((stringp address)
+         (setq header-line-format
+               (format "Socket: %s" address)))))
 
 (defun geiser-repl--fontify-output-region (beg end)
   "Apply highlighting to a REPL output region."
@@ -391,10 +408,9 @@ module command as a string")
   (add-text-properties
    start end
    '(font-lock-fontified t
-     fontified t
-     font-lock-multiline t
-     font-lock-face geiser-font-lock-repl-output)))
-
+			 fontified t
+			 font-lock-multiline t
+			 font-lock-face geiser-font-lock-repl-output)))
 
 (defun geiser-repl--narrow-to-prompt ()
   "Narrow to active prompt region and return t, otherwise returns nil."
@@ -451,10 +467,10 @@ module command as a string")
         (add-text-properties (1+ geiser-repl--last-output-start)
                              geiser-repl--last-output-end
                              `(read-only ,geiser-repl-read-only-output-p))
-        (geiser-repl--fontify-output-region (1+ geiser-repl--last-output-start)
+        (geiser-repl--fontify-output-region geiser-repl--last-output-start
                                             geiser-repl--last-output-end)
-        (font-lock-ensure geiser-repl--last-output-start
-                          geiser-repl--last-output-end))))
+        (geiser--font-lock-ensure geiser-repl--last-output-start
+                                  geiser-repl--last-output-end))))
 
   (geiser-con--connection-update-debugging geiser-repl--connection txt)
   (geiser-image--replace-images geiser-repl-inline-images-p
@@ -471,9 +487,11 @@ module command as a string")
         (error "Geiser requires %s version %s but detected %s" impl r v)))))
 
 (defun geiser-repl--start-repl (impl address)
-  (message "Starting Geiser REPL for %s ..." impl)
+  (message "Starting Geiser REPL ...")
   (when (not address) (geiser-repl--check-version impl))
-  (geiser-repl--to-repl-buffer impl)
+  (let ((buffer (current-buffer)))
+    (geiser-repl--to-repl-buffer impl)
+    (setq geiser-repl--last-scm-buffer buffer))
   (sit-for 0)
   (goto-char (point-max))
   (geiser-repl--autodoc-mode -1)
@@ -554,9 +572,9 @@ module command as a string")
 
 (defun geiser-repl--connection* ()
   (let ((buffer (geiser-repl--set-up-repl geiser-impl--implementation)))
-   (and (buffer-live-p buffer)
-        (get-buffer-process buffer)
-        (with-current-buffer buffer geiser-repl--connection))))
+    (and (buffer-live-p buffer)
+         (get-buffer-process buffer)
+         (with-current-buffer buffer geiser-repl--connection))))
 
 (defun geiser-repl--connection ()
   (or (geiser-repl--connection*)
@@ -683,7 +701,7 @@ If SAVE-HISTORY is non-nil, save CMD in the REPL history."
 (defun geiser-repl--module-function (&optional module)
   (if (and module geiser-eval--get-impl-module)
       (funcall geiser-eval--get-impl-module module)
-      :f))
+    :f))
 
 (defun geiser-repl--doc-module ()
   (interactive)
@@ -736,7 +754,8 @@ If SAVE-HISTORY is non-nil, save CMD in the REPL history."
                (geiser-repl--grab-input)
              (ignore-errors (compile-goto-error))))
           ((let ((inhibit-field-text-motion t))
-             (end-of-line)
+             (when geiser-repl-send-on-return-p
+               (end-of-line))
              (<= (geiser-repl--nesting-level) 0))
            (geiser-repl--send-input))
           (t (goto-char p)
@@ -838,7 +857,7 @@ buffer."
   ("Symbol documentation" ("\C-c\C-dd" "\C-c\C-d\C-d")
    geiser-doc-symbol-at-point
    "Documentation for symbol at point" :enable (geiser--symbol-at-point))
-  ("Lookup symbol in manul" ("\C-c\C-di" "\C-c\C-d\C-i")
+  ("Lookup symbol in manual" ("\C-c\C-di" "\C-c\C-d\C-i")
    geiser-doc-look-up-manual
    "Documentation for symbol at point" :enable (geiser--symbol-at-point))
   ("Module documentation" ("\C-c\C-dm" "\C-c\C-d\C-m") geiser-repl--doc-module
@@ -846,9 +865,13 @@ buffer."
   --
   ("Clear buffer" "\C-c\M-o" geiser-repl-clear-buffer
    "Clean up REPL buffer, leaving just a lonely prompt")
+  ("Toggle ()/[]" ("\C-c\C-e\C-[" "\C-c\C-e[") geiser-squarify)
+  ("Insert λ" ("\C-c\\" "\C-c\C-\\") geiser-insert-lambda)
+  --
   ("Kill Scheme interpreter" "\C-c\C-q" geiser-repl-exit
    :enable (geiser-repl--live-p))
   ("Restart" "\C-c\C-z" switch-to-geiser :enable (not (geiser-repl--live-p)))
+
   --
   (custom "REPL options" geiser-repl))
 
@@ -861,9 +884,7 @@ buffer."
   "Start a new Geiser REPL."
   (interactive
    (list (geiser-repl--get-impl "Start Geiser for scheme implementation: ")))
-  (let ((buffer (current-buffer)))
-    (geiser-repl--start-repl impl nil)
-    (geiser-repl--maybe-remember-scm-buffer buffer)))
+  (geiser-repl--start-repl impl nil))
 
 (defalias 'geiser 'run-geiser)
 
@@ -871,10 +892,7 @@ buffer."
   "Start a new Geiser REPL connected to a remote Scheme process."
   (interactive
    (list (geiser-repl--get-impl "Connect to Scheme implementation: ")))
-  (let ((buffer (current-buffer)))
-    (geiser-repl--start-repl impl
-                             (geiser-repl--read-address host port))
-    (geiser-repl--maybe-remember-scm-buffer buffer)))
+  (geiser-repl--start-repl impl (geiser-repl--read-address host port)))
 
 (defun geiser-connect-local (impl socket)
   "Start a new Geiser REPL connected to a remote Scheme process
@@ -882,9 +900,7 @@ over a Unix-domain socket."
   (interactive
    (list (geiser-repl--get-impl "Connect to Scheme implementation: ")
          (expand-file-name (read-file-name "Socket file name: "))))
-  (let ((buffer (current-buffer)))
-    (geiser-repl--start-repl impl socket)
-    (geiser-repl--maybe-remember-scm-buffer buffer)))
+  (geiser-repl--start-repl impl socket))
 
 (make-variable-buffer-local
  (defvar geiser-repl--last-scm-buffer nil))
@@ -920,7 +936,7 @@ If no REPL is running, execute `run-geiser' to start a fresh one."
            (geiser-connect impl (geiser-repl--host) (geiser-repl--port)))
           ((geiser-repl--local-p)
            (geiser-connect-local impl geiser-repl--address))
-	  (impl (run-geiser impl))
+          (impl (run-geiser impl))
           (t (call-interactively 'run-geiser)))
     (geiser-repl--maybe-remember-scm-buffer buffer)))
 

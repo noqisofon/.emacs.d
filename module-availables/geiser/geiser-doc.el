@@ -10,6 +10,7 @@
 ;; Start date: Sat Feb 14, 2009 14:09
 
 
+;;; Code:
 
 (require 'geiser-edit)
 (require 'geiser-impl)
@@ -190,10 +191,10 @@ help (e.g. browse an HTML page) implementing this method.")
 (defun geiser-doc--insert-xbutton (&optional manual)
   (let ((label (if manual "[manual]" "[source]"))
         (help (if manual "Look up in Scheme manual" "Go to definition")))
-  (insert-text-button label
-                      :type 'geiser-doc--xbutton
-                      'help-echo help
-                      'x-kind (if manual 'manual 'source))))
+    (insert-text-button label
+			:type 'geiser-doc--xbutton
+			'help-echo help
+			'x-kind (if manual 'manual 'source))))
 
 (defun geiser-doc--insert-xbuttons (impl)
   (when (geiser-impl--method 'external-help impl)
@@ -347,8 +348,7 @@ help (e.g. browse an HTML page) implementing this method.")
                                                           impl)
                                       impl))))
 
-(defun geiser-doc--render-docstring
-  (docstring symbol &optional module impl)
+(defun geiser-doc--render-docstring (docstring symbol &optional module impl)
   (erase-buffer)
   (geiser-doc--insert-title
    (geiser-autodoc--str* (cdr (assoc "signature" docstring))))
@@ -382,6 +382,11 @@ With prefix argument, ask for symbol (with completion)."
                      "Symbol: " (geiser--symbol-at-point)))))
     (when symbol (geiser-doc-symbol symbol))))
 
+(defun geiser-doc-manual-for-symbol (symbol)
+  (geiser-doc--external-help geiser-impl--implementation
+                             symbol
+                             (geiser-eval--get-module)))
+
 (defun geiser-doc-look-up-manual (&optional arg)
   "Look up manual for symbol at point.
 With prefix argument, ask for the lookup symbol (with completion)."
@@ -390,9 +395,7 @@ With prefix argument, ask for the lookup symbol (with completion)."
     (error "No manual available"))
   (let ((symbol (or (and (not arg) (geiser--symbol-at-point))
                     (geiser-completion--read-symbol "Symbol: "))))
-    (geiser-doc--external-help geiser-impl--implementation
-                               symbol
-                               (geiser-eval--get-module))))
+    (geiser-doc-manual-for-symbol symbol)))
 
 (defconst geiser-doc--sections '(("Procedures:" "procs")
                                  ("Syntax:" "syntax")
