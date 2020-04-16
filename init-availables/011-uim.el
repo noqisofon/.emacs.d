@@ -1,8 +1,8 @@
 ;;; -*- coding: utf-8; lexical-binding: t; -*-
 
-;;; 001-input-method.el ---
+;;; 011-input-method.el ---
 
-;; Copyright (C) 2014-2020  ned rihine
+;; Copyright (C) 2020  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -25,27 +25,12 @@
 ;; 
 
 ;;; Code:
-(if (null (getenv "EMACS_IM"))
-    (setq emacs-ime (cond
-                     (windows-nt-p "ms-ime")
-                     (:else        "none"))
-    ;; else
-    (cond
-     ((eq "uim" (getenv "EMACS_IM"))
-      ;; emacs の IME(Input Method Engine?) として、uim を使用する。
-      (setq emacs-ime "uim"))
-     ((eq "skk" (getenv "EMACS_IM"))
-      (setq emacs-ime "skk"))
-     ((eq "mozc" (getenv "EMACS_IM"))
-      (setq emacs-ime "mozc"))
-     (:else
-      (setq emacs-ime "none")))))
+(require-if-exists uim)
+(require-if-exists uim-leim)
 
-(cond ((eq emacs-ime "uim")
-       (require-if-exists 011-uim))
+;; TODO: 何らかの方法で選択している入力エンジン？(mozc とか anthy とか)を知ることができたらそれを元に切り替える。
 
-      ((eq emacs-ime "ms-ime")
-       (require-if-exists 011-ime)))
+;; 現在はとりあえず Anthy 固定。
+(load-library "anthy")
 
-(provide '001-input-method)
-;;; 001-input-method.el ends here
+(setq default-input-method "japanese-anthy-uim")
