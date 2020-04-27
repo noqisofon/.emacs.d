@@ -2,7 +2,7 @@
 
 ;;; 011-mozc.el --- 
 
-;; Copyright (C) 2014-2018  ned rihine
+;; Copyright (C) 2014-2020  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -26,6 +26,8 @@
 
 ;;; Code:
 (require-if-exists mozc
+
+
                    (setq default-input-method "japanese-mozc")
   
                    ;;
