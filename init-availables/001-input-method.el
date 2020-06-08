@@ -27,8 +27,9 @@
 ;;; Code:
 (if (null (getenv "EMACS_IM"))
     (setq emacs-ime (cond
-                     (windows-nt-p "ms-ime")
-                     (:else        "none"))
+                     (windows-nt-p                           "ms-ime")
+                     ((equal (getenv "GTK_IM_MODULE") "uim") "uim")
+                     (:else                                  "none")))
     ;; else
     (cond
      ((eq "uim" (getenv "EMACS_IM"))
@@ -39,7 +40,7 @@
      ((eq "mozc" (getenv "EMACS_IM"))
       (setq emacs-ime "mozc"))
      (:else
-      (setq emacs-ime "none")))))
+      (setq emacs-ime "none"))))
 
 (cond ((eq emacs-ime "uim")
        (require-if-exists 011-uim))

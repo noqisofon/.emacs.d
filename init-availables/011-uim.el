@@ -29,8 +29,15 @@
 (require-if-exists uim-leim)
 
 ;; TODO: 何らかの方法で選択している入力エンジン？(mozc とか anthy とか)を知ることができたらそれを元に切り替える。
+(let ((default-im-name (string-trim-right (shell-command-to-string "uim-sh -e default-im-name"))))
 
-;; 現在はとりあえず Anthy 固定。
-(load-library "anthy")
+  (cond ((equal default-im-name "mozc")
+         (require-if-exists 011-mozc))
+        (:else
+         ;; 現在はとりあえず Anthy 固定。
+         (load-library "anthy")
 
-(setq default-input-method "japanese-anthy-uim")
+         (setq default-input-method "japanese-anthy-uim"))))
+
+
+(provide '011-uim)
