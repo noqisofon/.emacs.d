@@ -2,7 +2,7 @@
 
 ;;; 040-programing-language.el ---
 
-;; Copyright (C) 2014-2015  ned rihine
+;; Copyright (C) 2014-2020  ned rihine
 
 ;; Author: ned rihine <ned.rihine@gmail.com>
 ;; Keywords: 
@@ -51,6 +51,7 @@
 (require-if-exists 040-scala)
 (require-if-exists 040-powershell)
 (require-if-exists 040-qml)
+(require-if-exists 040-groovy)
 
 (provide '040-programing-language)
 ;;; 040-programing-language.el ends here
