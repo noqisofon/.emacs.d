@@ -10,6 +10,8 @@
 
 (defvar org-odt-data-dir "~/var/org/etc")
 
+(setq org-time-stamp-custom-formats '("<%y-%m-%d>" . "<%y-%m-%dT%H:%M>"))
+
 (setq org-startup-truncated nil)
 (setq org-return-follows-link t)
 ;;(org-remember-insinuate)
@@ -21,6 +23,7 @@
 
 (push '("\\.org$" . org-mode) auto-mode-alist)
 
+(require-if-exists ox-md)
 (require-if-exists org
                    (set-face-foreground 'org-level-1 "#7fb000")
                    (set-face-foreground 'org-level-2 "#7f9142")
